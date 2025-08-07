@@ -12,9 +12,18 @@ public class rank {
         }
 
         int answer[] = new int[num];
-        int max = score[0];
-        answer[0] = 1;
-
+        for(int i=0; i<num;i++){
+            int cnt = 1;
+            for(int j=0;j<num;j++){
+                if(score[i]<score[j]){
+                    cnt++;
+                }
+            }
+            answer[i] = cnt;
+        }
+        for(int i=0;i<num;i++){
+         System.out.print(answer[i]+" ");
+        }
 
 
     }
