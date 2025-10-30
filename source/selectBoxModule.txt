@@ -1,87 +1,86 @@
-// lib/api/commonCode.ts - API 호출 함수들
+// store/commonCodeAtoms.ts - Jotai atom 정의
+import { atom } from 'jotai';
+import { atomWithQuery } from 'jotai-tanstack-query';
+
 export interface CommonCode {
   code: string;
   name: string;
 }
 
-export const commonCodeApi = {
-  // 단일 공통코드 조회
-  getCommonCode: async (type: string): Promise<CommonCode[]> => {
-    const response = await fetch(`/api/common-code/${type}`);
-    if (!response.ok) throw new Error('공통코드 조회 실패');
-    return response.json();
+// 방법 1: atomWithQuery 사용 (추천 - 자동 캐싱)
+export const categoryCodesAtom = atomWithQuery(() => ({
+  queryKey: ['commonCode', 'category'],
+  queryFn: async () => {
+    const res = await fetch('/api/common-code/category');
+    return res.json() as Promise<CommonCode[]>;
   },
+}));
 
-  // 여러 공통코드 한번에 조회
-  getMultipleCommonCodes: async (types: string[]): Promise<Record<string, CommonCode[]>> => {
-    const promises = types.map(type =>
-      fetch(`/api/common-code/${type}`).then(res => res.json())
-    );
+export const statusCodesAtom = atomWithQuery(() => ({
+  queryKey: ['commonCode', 'status'],
+  queryFn: async () => {
+    const res = await fetch('/api/common-code/status');
+    return res.json() as Promise<CommonCode[]>;
+  },
+}));
 
-    const results = await Promise.all(promises);
+// 방법 2: 일반 atom + async atom (더 심플)
+export const categoryCodesSimpleAtom = atom<CommonCode[]>([]);
+export const statusCodesSimpleAtom = atom<CommonCode[]>([]);
 
-    return types.reduce((acc, type, index) => {
-      acc[type] = results[index];
-      return acc;
-    }, {} as Record<string, CommonCode[]>);
+// 공통코드 로드하는 async atom
+export const loadCommonCodesAtom = atom(
+  null,
+  async (get, set) => {
+    try {
+      const [categoryRes, statusRes] = await Promise.all([
+        fetch('/api/common-code/category'),
+        fetch('/api/common-code/status')
+      ]);
+
+      const [categoryData, statusData] = await Promise.all([
+        categoryRes.json(),
+        statusRes.json()
+      ]);
+
+      set(categoryCodesSimpleAtom, categoryData);
+      set(statusCodesSimpleAtom, statusData);
+    } catch (error) {
+      console.error('공통코드 로드 실패:', error);
+    }
   }
-};
+);
 
-// hooks/useCommonCodes.ts - Custom Hook
-import { useState, useEffect } from 'react';
-import { commonCodeApi, CommonCode } from '@/lib/api/commonCode';
+// 방법 3: 하나의 atom으로 모든 공통코드 관리
+export const allCommonCodesAtom = atom<Record<string, CommonCode[]>>({});
 
-export function useCommonCodes(types: string[]) {
-  const [codes, setCodes] = useState<Record<string, CommonCode[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+export const loadAllCommonCodesAtom = atom(
+  null,
+  async (get, set, types: string[]) => {
+    try {
+      const promises = types.map(type =>
+        fetch(`/api/common-code/${type}`).then(res => res.json())
+      );
 
-  useEffect(() => {
-    const fetchCodes = async () => {
-      try {
-        setLoading(true);
-        const data = await commonCodeApi.getMultipleCommonCodes(types);
-        setCodes(data);
-      } catch (err) {
-        setError(err as Error);
-      } finally {
-        setLoading(false);
-      }
-    };
+      const results = await Promise.all(promises);
 
-    fetchCodes();
-  }, [types.join(',')]);
+      const data = types.reduce((acc, type, index) => {
+        acc[type] = results[index];
+        return acc;
+      }, {} as Record<string, CommonCode[]>);
 
-  return { codes, loading, error };
-}
+      set(allCommonCodesAtom, data);
+    } catch (error) {
+      console.error('공통코드 로드 실패:', error);
+    }
+  }
+);
 
-// 단일 공통코드용 Hook
-export function useCommonCode(type: string) {
-  const [codes, setCodes] = useState<CommonCode[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+// ============================================
+// components/CommonCodeSelect.tsx
+// ============================================
 
-  useEffect(() => {
-    const fetchCode = async () => {
-      try {
-        setLoading(true);
-        const data = await commonCodeApi.getCommonCode(type);
-        setCodes(data);
-      } catch (err) {
-        setError(err as Error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCode();
-  }, [type]);
-
-  return { codes, loading, error };
-}
-
-// components/CommonCodeSelect.tsx - 재사용 가능한 Select 컴포넌트
-import { CommonCode } from '@/lib/api/commonCode';
+import { CommonCode } from '@/store/commonCodeAtoms';
 
 interface CommonCodeSelectProps {
   label: string;
@@ -123,140 +122,169 @@ export function CommonCodeSelect({
   );
 }
 
-// app/detail/[id]/page.tsx - 사용 예시
+// ============================================
+// 사용 예시 1: atomWithQuery 사용 (추천)
+// ============================================
+
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { useCommonCodes } from '@/hooks/useCommonCodes';
+import { useAtom, useSetAtom } from 'jotai';
+import {
+  categoryCodesAtom,
+  statusCodesAtom
+} from '@/store/commonCodeAtoms';
 import { CommonCodeSelect } from '@/components/CommonCodeSelect';
 
-interface DetailData {
-  id: string;
-  title: string;
-  categoryCode: string;
-  statusCode: string;
-}
+export default function DetailPage1() {
+  const [formData, setFormData] = useState({
+    categoryCode: '',
+    statusCode: ''
+  });
 
-export default function DetailPage() {
-  const params = useParams();
-  const [detailData, setDetailData] = useState<DetailData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Jotai로 공통코드 가져오기
+  const [categoryResult] = useAtom(categoryCodesAtom);
+  const [statusResult] = useAtom(statusCodesAtom);
 
-  // 공통코드 2개를 한번에 조회
-  const { codes, loading: codesLoading } = useCommonCodes(['category', 'status']);
-
-  useEffect(() => {
-    fetchDetailData();
-  }, [params.id]);
-
-  const fetchDetailData = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/detail/${params.id}`);
-      const data = await response.json();
-      setDetailData(data);
-    } catch (error) {
-      console.error('데이터 로딩 실패:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    try {
-      const response = await fetch(`/api/detail/${params.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(detailData),
-      });
-
-      if (response.ok) {
-        alert('저장되었습니다.');
-      }
-    } catch (error) {
-      console.error('저장 실패:', error);
-      alert('저장에 실패했습니다.');
-    }
-  };
-
-  if (loading || codesLoading) {
-    return <div className="p-8">로딩 중...</div>;
+  // 로딩 체크
+  if (categoryResult.isLoading || statusResult.isLoading) {
+    return <div>로딩 중...</div>;
   }
 
-  if (!detailData) {
-    return <div className="p-8">데이터를 찾을 수 없습니다.</div>;
-  }
+  const categoryList = categoryResult.data || [];
+  const statusList = statusResult.data || [];
 
   return (
     <div className="max-w-2xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-6">상세 정보</h1>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">제목</label>
-          <input
-            type="text"
-            value={detailData.title}
-            onChange={(e) => setDetailData({...detailData, title: e.target.value})}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          />
-        </div>
-
+      <form className="space-y-4">
         <CommonCodeSelect
           label="카테고리"
-          value={detailData.categoryCode}
-          onChange={(value) => setDetailData({...detailData, categoryCode: value})}
-          options={codes.category || []}
-          required
+          value={formData.categoryCode}
+          onChange={(value) => setFormData({...formData, categoryCode: value})}
+          options={categoryList}
         />
 
         <CommonCodeSelect
           label="상태"
-          value={detailData.statusCode}
-          onChange={(value) => setDetailData({...detailData, statusCode: value})}
-          options={codes.status || []}
-          required
+          value={formData.statusCode}
+          onChange={(value) => setFormData({...formData, statusCode: value})}
+          options={statusList}
         />
-
-        <div className="flex gap-2 pt-4">
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-          >
-            저장
-          </button>
-          <button
-            type="button"
-            onClick={() => window.history.back()}
-            className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-          >
-            취소
-          </button>
-        </div>
       </form>
     </div>
   );
 }
 
-// 다른 페이지에서 사용 예시
-// app/another/page.tsx
-export default function AnotherPage() {
-  // 단일 공통코드만 필요할 때
-  const { codes: categoryList } = useCommonCode('category');
+// ============================================
+// 사용 예시 2: 심플한 atom 사용
+// ============================================
 
-  // 또는 여러 개
-  const { codes } = useCommonCodes(['category', 'status', 'type']);
+'use client';
+
+import { useAtom, useSetAtom, useAtomValue } from 'jotai';
+import {
+  categoryCodesSimpleAtom,
+  statusCodesSimpleAtom,
+  loadCommonCodesAtom
+} from '@/store/commonCodeAtoms';
+
+export default function DetailPage2() {
+  const [formData, setFormData] = useState({
+    categoryCode: '',
+    statusCode: ''
+  });
+
+  // 공통코드 데이터
+  const categoryList = useAtomValue(categoryCodesSimpleAtom);
+  const statusList = useAtomValue(statusCodesSimpleAtom);
+
+  // 공통코드 로드 함수
+  const loadCommonCodes = useSetAtom(loadCommonCodesAtom);
+
+  useEffect(() => {
+    loadCommonCodes(); // 한 번만 호출
+  }, []);
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <form className="space-y-4">
+        <CommonCodeSelect
+          label="카테고리"
+          value={formData.categoryCode}
+          onChange={(value) => setFormData({...formData, categoryCode: value})}
+          options={categoryList}
+        />
+
+        <CommonCodeSelect
+          label="상태"
+          value={formData.statusCode}
+          onChange={(value) => setFormData({...formData, statusCode: value})}
+          options={statusList}
+        />
+      </form>
+    </div>
+  );
+}
+
+// ============================================
+// 사용 예시 3: 하나의 atom으로 관리
+// ============================================
+
+'use client';
+
+import { useAtomValue, useSetAtom } from 'jotai';
+import {
+  allCommonCodesAtom,
+  loadAllCommonCodesAtom
+} from '@/store/commonCodeAtoms';
+
+export default function DetailPage3() {
+  const [formData, setFormData] = useState({
+    categoryCode: '',
+    statusCode: ''
+  });
+
+  // 모든 공통코드
+  const commonCodes = useAtomValue(allCommonCodesAtom);
+  const loadCodes = useSetAtom(loadAllCommonCodesAtom);
+
+  useEffect(() => {
+    loadCodes(['category', 'status']); // 필요한 것만 로드
+  }, []);
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <form className="space-y-4">
+        <CommonCodeSelect
+          label="카테고리"
+          value={formData.categoryCode}
+          onChange={(value) => setFormData({...formData, categoryCode: value})}
+          options={commonCodes.category || []}
+        />
+
+        <CommonCodeSelect
+          label="상태"
+          value={formData.statusCode}
+          onChange={(value) => setFormData({...formData, statusCode: value})}
+          options={commonCodes.status || []}
+        />
+      </form>
+    </div>
+  );
+}
+
+// ============================================
+// 다른 페이지에서도 동일하게 사용
+// ============================================
+
+export function AnotherPage() {
+  // 이미 로드된 데이터는 재사용됨 (Jotai가 자동 관리)
+  const categoryList = useAtomValue(categoryCodesSimpleAtom);
 
   return (
     <CommonCodeSelect
       label="카테고리"
-      value={selectedValue}
-      onChange={setSelectedValue}
+      value={selected}
+      onChange={setSelected}
       options={categoryList}
     />
   );
