@@ -1,62 +1,52 @@
 // store/commonCodeAtoms.ts
 import { atom } from 'jotai';
+import { atomFamily } from 'jotai/utils';
 
 export interface CommonCode {
   code: string;
   name: string;
 }
 
-// 모든 공통코드를 저장하는 atom
-export const allCommonCodesAtom = atom<Record<string, CommonCode[]>>({});
+// ============================================
+// 방법 1: atomFamily 사용 (추천 ⭐)
+// ============================================
 
-// 공통코드 로드하는 atom (파라미터를 받음!)
-export const loadCommonCodesAtom = atom(
-  null,  // 읽기 값 없음
-  async (get, set, types: string[]) => {  // 👈 types 파라미터로 받음!
-    try {
-      // 이미 로드된 코드는 제외 (중복 호출 방지)
-      const currentCodes = get(allCommonCodesAtom);
-      const needToLoad = types.filter(type => !currentCodes[type]);
+// 타입별로 자동으로 개별 atom 생성
+export const commonCodeFamily = atomFamily((type: string) =>
+  atom<CommonCode[]>([])
+);
 
-      if (needToLoad.length === 0) {
-        console.log('이미 모든 코드가 로드되어 있음');
-        return; // 이미 다 있으면 API 호출 안 함
+// 로드 함수도 타입별로 생성
+export const loadCommonCodeFamily = atomFamily((type: string) =>
+  atom(
+    null,
+    async (get, set) => {
+      // 해당 타입의 atom 가져오기
+      const codeAtom = commonCodeFamily(type);
+      const current = get(codeAtom);
+
+      // 이미 있으면 API 호출 안 함
+      if (current.length > 0) {
+        console.log(`✅ ${type} 이미 로드됨`);
+        return;
       }
 
-      console.log('로드할 공통코드:', needToLoad);
-
-      // 필요한 것만 API 호출
-      const promises = needToLoad.map(type =>
-        fetch(`/api/common-code/${type}`).then(res => res.json())
-      );
-
-      const results = await Promise.all(promises);
-
-      // 새로운 데이터 추가 (기존 데이터 유지)
-      const newData = needToLoad.reduce((acc, type, index) => {
-        acc[type] = results[index];
-        return acc;
-      }, {} as Record<string, CommonCode[]>);
-
-      set(allCommonCodesAtom, {
-        ...currentCodes,  // 기존 데이터 유지
-        ...newData        // 새 데이터 추가
-      });
-    } catch (error) {
-      console.error('공통코드 로드 실패:', error);
+      console.log(`📡 ${type} API 호출`);
+      const response = await fetch(`/api/common-code/${type}`);
+      const data = await response.json();
+      set(codeAtom, data);
     }
-  }
+  )
 );
 
 // ============================================
-// 사용 예시 1: 페이지 A - menu, auth 필요
+// 사용 예시 1: 기본 사용법
 // ============================================
 
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { allCommonCodesAtom, loadCommonCodesAtom } from '@/store/commonCodeAtoms';
+import { commonCodeFamily, loadCommonCodeFamily } from '@/store/commonCodeAtoms';
 
 export default function PageA() {
   const [formData, setFormData] = useState({
@@ -64,60 +54,60 @@ export default function PageA() {
     authCode: ''
   });
 
-  // 1. 공통코드 데이터 가져오기
-  const commonCodes = useAtomValue(allCommonCodesAtom);
+  // 파라미터로 원하는 공통코드 가져오기
+  const menuCodes = useAtomValue(commonCodeFamily('menu'));
+  const authCodes = useAtomValue(commonCodeFamily('auth'));
 
-  // 2. 로드 함수 가져오기
-  const loadCodes = useSetAtom(loadCommonCodesAtom);
+  // 로드 함수도 파라미터로
+  const loadMenu = useSetAtom(loadCommonCodeFamily('menu'));
+  const loadAuth = useSetAtom(loadCommonCodeFamily('auth'));
 
   useEffect(() => {
-    // 3. 이 페이지에 필요한 공통코드만 로드
-    loadCodes(['menu', 'auth']);  // 👈 파라미터로 넘김!
+    loadMenu();  // menu 로드
+    loadAuth();  // auth 로드
   }, []);
 
   return (
-    <div className="p-8">
-      <h1>페이지 A (menu, auth 사용)</h1>
+    <div className="p-8 space-y-4">
+      <h1>페이지 A (menu, auth)</h1>
 
-      <div className="space-y-4">
-        <div>
-          <label>메뉴</label>
-          <select
-            value={formData.menuCode}
-            onChange={(e) => setFormData({...formData, menuCode: e.target.value})}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {commonCodes.menu?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label>메뉴</label>
+        <select
+          value={formData.menuCode}
+          onChange={(e) => setFormData({...formData, menuCode: e.target.value})}
+          className="w-full px-3 py-2 border rounded"
+        >
+          <option value="">선택하세요</option>
+          {menuCodes.map(item => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <div>
-          <label>권한</label>
-          <select
-            value={formData.authCode}
-            onChange={(e) => setFormData({...formData, authCode: e.target.value})}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {commonCodes.auth?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label>권한</label>
+        <select
+          value={formData.authCode}
+          onChange={(e) => setFormData({...formData, authCode: e.target.value})}
+          className="w-full px-3 py-2 border rounded"
+        >
+          <option value="">선택하세요</option>
+          {authCodes.map(item => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );
 }
 
 // ============================================
-// 사용 예시 2: 페이지 B - category, status 필요
+// 사용 예시 2: 다른 페이지 (category, status)
 // ============================================
 
 export default function PageB() {
@@ -126,161 +116,199 @@ export default function PageB() {
     statusCode: ''
   });
 
-  const commonCodes = useAtomValue(allCommonCodesAtom);
-  const loadCodes = useSetAtom(loadCommonCodesAtom);
+  // 다른 파라미터 사용
+  const categoryCodes = useAtomValue(commonCodeFamily('category'));
+  const statusCodes = useAtomValue(commonCodeFamily('status'));
+
+  const loadCategory = useSetAtom(loadCommonCodeFamily('category'));
+  const loadStatus = useSetAtom(loadCommonCodeFamily('status'));
 
   useEffect(() => {
-    // 다른 공통코드 로드
-    loadCodes(['category', 'status']);  // 👈 다른 파라미터!
+    loadCategory();  // category 로드
+    loadStatus();    // status 로드
   }, []);
 
   return (
-    <div className="p-8">
-      <h1>페이지 B (category, status 사용)</h1>
+    <div className="p-8 space-y-4">
+      <h1>페이지 B (category, status)</h1>
 
-      <div className="space-y-4">
-        <div>
-          <label>카테고리</label>
-          <select
-            value={formData.categoryCode}
-            onChange={(e) => setFormData({...formData, categoryCode: e.target.value})}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {commonCodes.category?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label>카테고리</label>
+        <select
+          value={formData.categoryCode}
+          onChange={(e) => setFormData({...formData, categoryCode: e.target.value})}
+          className="w-full px-3 py-2 border rounded"
+        >
+          <option value="">선택하세요</option>
+          {categoryCodes.map(item => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <div>
-          <label>상태</label>
-          <select
-            value={formData.statusCode}
-            onChange={(e) => setFormData({...formData, statusCode: e.target.value})}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {commonCodes.status?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label>상태</label>
+        <select
+          value={formData.statusCode}
+          onChange={(e) => setFormData({...formData, statusCode: e.target.value})}
+          className="w-full px-3 py-2 border rounded"
+        >
+          <option value="">선택하세요</option>
+          {statusCodes.map(item => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );
 }
 
 // ============================================
-// 사용 예시 3: 페이지 C - menu만 필요
+// Custom Hook으로 만들기 (더 편리하게!)
+// ============================================
+
+import { useEffect } from 'react';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { commonCodeFamily, loadCommonCodeFamily } from '@/store/commonCodeAtoms';
+
+// 파라미터를 받는 Custom Hook
+export function useCommonCode(type: string) {
+  const codes = useAtomValue(commonCodeFamily(type));
+  const loadCodes = useSetAtom(loadCommonCodeFamily(type));
+
+  useEffect(() => {
+    loadCodes();
+  }, [type]);
+
+  return codes;
+}
+
+// 여러 개를 한번에
+export function useCommonCodes(types: string[]) {
+  const codes: Record<string, CommonCode[]> = {};
+
+  types.forEach(type => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    codes[type] = useCommonCode(type);
+  });
+
+  return codes;
+}
+
+// ============================================
+// 사용 예시 3: Custom Hook 사용 (가장 간단!)
 // ============================================
 
 export default function PageC() {
-  const [menuCode, setMenuCode] = useState('');
+  const [formData, setFormData] = useState({
+    menuCode: '',
+    authCode: ''
+  });
 
-  const commonCodes = useAtomValue(allCommonCodesAtom);
-  const loadCodes = useSetAtom(loadCommonCodesAtom);
-
-  useEffect(() => {
-    // 하나만 로드
-    loadCodes(['menu']);  // 👈 하나만!
-  }, []);
+  // 한 줄로 끝!
+  const menuCodes = useCommonCode('menu');
+  const authCodes = useCommonCode('auth');
 
   return (
-    <div className="p-8">
-      <h1>페이지 C (menu만 사용)</h1>
+    <div className="p-8 space-y-4">
+      <h1>페이지 C (Custom Hook)</h1>
 
-      <select
-        value={menuCode}
-        onChange={(e) => setMenuCode(e.target.value)}
-        className="w-full px-3 py-2 border rounded"
-      >
-        <option value="">선택하세요</option>
-        {commonCodes.menu?.map(item => (
-          <option key={item.code} value={item.code}>
-            {item.name}
-          </option>
-        ))}
-      </select>
+      <div>
+        <label>메뉴</label>
+        <select
+          value={formData.menuCode}
+          onChange={(e) => setFormData({...formData, menuCode: e.target.value})}
+          className="w-full px-3 py-2 border rounded"
+        >
+          <option value="">선택하세요</option>
+          {menuCodes.map(item => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label>권한</label>
+        <select
+          value={formData.authCode}
+          onChange={(e) => setFormData({...formData, authCode: e.target.value})}
+          className="w-full px-3 py-2 border rounded"
+        >
+          <option value="">선택하세요</option>
+          {authCodes.map(item => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
 
 // ============================================
-// 실행 흐름 설명
+// 동작 원리
 // ============================================
 
 /*
-1. 페이지 A 진입:
-   loadCodes(['menu', 'auth']) 실행
-   → API 호출: /api/common-code/menu, /api/common-code/auth
-   → allCommonCodesAtom에 저장:
-     {
-       menu: [...],
-       auth: [...]
-     }
+atomFamily 동작 방식:
 
-2. 페이지 B 진입:
-   loadCodes(['category', 'status']) 실행
-   → API 호출: /api/common-code/category, /api/common-code/status
-   → allCommonCodesAtom에 추가 저장:
-     {
-       menu: [...],        // 기존 데이터 유지
-       auth: [...],        // 기존 데이터 유지
-       category: [...],    // 새로 추가
-       status: [...]       // 새로 추가
-     }
+1. commonCodeFamily('menu') 호출
+   → 'menu'라는 키로 atom 생성 (처음이면)
+   → 이미 있으면 기존 atom 반환
 
-3. 페이지 A로 다시 돌아감:
-   loadCodes(['menu', 'auth']) 실행
-   → 이미 로드되어 있음!
-   → API 호출 안 함 (캐싱됨)
-   → 바로 사용
+2. commonCodeFamily('auth') 호출
+   → 'auth'라는 키로 새로운 atom 생성
+   → menu atom과는 완전히 독립적
 
-4. 페이지 C 진입:
-   loadCodes(['menu']) 실행
-   → menu는 이미 있음!
-   → API 호출 안 함
+3. 각 atom은 독립적으로 관리됨
+   {
+     'menu': menuAtom (독립적인 상태),
+     'auth': authAtom (독립적인 상태),
+     'category': categoryAtom (독립적인 상태)
+   }
+
+4. menu가 업데이트되어도 auth를 사용하는 컴포넌트는 리렌더링 안 됨!
 */
 
 // ============================================
-// Custom Hook으로 만들기 (선택사항)
+// 실행 흐름
 // ============================================
 
-import { useEffect } from 'react';
-import { useAtomValue, useSetAtom } from 'jotai';
-import { allCommonCodesAtom, loadCommonCodesAtom } from '@/store/commonCodeAtoms';
+/*
+페이지 A:
+  useCommonCode('menu')
+  → loadCommonCodeFamily('menu') 실행
+  → API 호출: /api/common-code/menu
+  → commonCodeFamily('menu')에 저장
 
-export function useCommonCodes(types: string[]) {
-  const commonCodes = useAtomValue(allCommonCodesAtom);
-  const loadCodes = useSetAtom(loadCommonCodesAtom);
+페이지 B:
+  useCommonCode('category')
+  → loadCommonCodeFamily('category') 실행
+  → API 호출: /api/common-code/category
+  → commonCodeFamily('category')에 저장
 
-  useEffect(() => {
-    loadCodes(types);
-  }, [types.join(',')]);
+다시 페이지 A:
+  useCommonCode('menu')
+  → 이미 데이터 있음!
+  → API 호출 안 함 ✅
+  → 캐시된 데이터 사용
+*/
 
-  // 필요한 코드만 반환
-  const codes = types.reduce((acc, type) => {
-    acc[type] = commonCodes[type] || [];
-    return acc;
-  }, {} as Record<string, CommonCode[]>);
+// ============================================
+// 패키지 설치 필요
+// ============================================
 
-  return codes;
-}
+/*
+npm install jotai jotai-utils
 
-// 사용 (더 간단!)
-export default function PageD() {
-  const codes = useCommonCodes(['menu', 'auth']);
+또는
 
-  return (
-    <select>
-      {codes.menu?.map(item => (
-        <option key={item.code}>{item.name}</option>
-      ))}
-    </select>
-  );
-}
+yarn add jotai jotai-utils
+*/
