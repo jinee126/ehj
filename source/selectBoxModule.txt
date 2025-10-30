@@ -1,0 +1,263 @@
+// lib/api/commonCode.ts - API 호출 함수들
+export interface CommonCode {
+  code: string;
+  name: string;
+}
+
+export const commonCodeApi = {
+  // 단일 공통코드 조회
+  getCommonCode: async (type: string): Promise<CommonCode[]> => {
+    const response = await fetch(`/api/common-code/${type}`);
+    if (!response.ok) throw new Error('공통코드 조회 실패');
+    return response.json();
+  },
+
+  // 여러 공통코드 한번에 조회
+  getMultipleCommonCodes: async (types: string[]): Promise<Record<string, CommonCode[]>> => {
+    const promises = types.map(type =>
+      fetch(`/api/common-code/${type}`).then(res => res.json())
+    );
+
+    const results = await Promise.all(promises);
+
+    return types.reduce((acc, type, index) => {
+      acc[type] = results[index];
+      return acc;
+    }, {} as Record<string, CommonCode[]>);
+  }
+};
+
+// hooks/useCommonCodes.ts - Custom Hook
+import { useState, useEffect } from 'react';
+import { commonCodeApi, CommonCode } from '@/lib/api/commonCode';
+
+export function useCommonCodes(types: string[]) {
+  const [codes, setCodes] = useState<Record<string, CommonCode[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    const fetchCodes = async () => {
+      try {
+        setLoading(true);
+        const data = await commonCodeApi.getMultipleCommonCodes(types);
+        setCodes(data);
+      } catch (err) {
+        setError(err as Error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCodes();
+  }, [types.join(',')]);
+
+  return { codes, loading, error };
+}
+
+// 단일 공통코드용 Hook
+export function useCommonCode(type: string) {
+  const [codes, setCodes] = useState<CommonCode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    const fetchCode = async () => {
+      try {
+        setLoading(true);
+        const data = await commonCodeApi.getCommonCode(type);
+        setCodes(data);
+      } catch (err) {
+        setError(err as Error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCode();
+  }, [type]);
+
+  return { codes, loading, error };
+}
+
+// components/CommonCodeSelect.tsx - 재사용 가능한 Select 컴포넌트
+import { CommonCode } from '@/lib/api/commonCode';
+
+interface CommonCodeSelectProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: CommonCode[];
+  placeholder?: string;
+  required?: boolean;
+}
+
+export function CommonCodeSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = '선택하세요',
+  required = false
+}: CommonCodeSelectProps) {
+  return (
+    <div>
+      <label className="block text-sm font-medium mb-2">
+        {label}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+        required={required}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((item) => (
+          <option key={item.code} value={item.code}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// app/detail/[id]/page.tsx - 사용 예시
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { useCommonCodes } from '@/hooks/useCommonCodes';
+import { CommonCodeSelect } from '@/components/CommonCodeSelect';
+
+interface DetailData {
+  id: string;
+  title: string;
+  categoryCode: string;
+  statusCode: string;
+}
+
+export default function DetailPage() {
+  const params = useParams();
+  const [detailData, setDetailData] = useState<DetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // 공통코드 2개를 한번에 조회
+  const { codes, loading: codesLoading } = useCommonCodes(['category', 'status']);
+
+  useEffect(() => {
+    fetchDetailData();
+  }, [params.id]);
+
+  const fetchDetailData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/detail/${params.id}`);
+      const data = await response.json();
+      setDetailData(data);
+    } catch (error) {
+      console.error('데이터 로딩 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const response = await fetch(`/api/detail/${params.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(detailData),
+      });
+
+      if (response.ok) {
+        alert('저장되었습니다.');
+      }
+    } catch (error) {
+      console.error('저장 실패:', error);
+      alert('저장에 실패했습니다.');
+    }
+  };
+
+  if (loading || codesLoading) {
+    return <div className="p-8">로딩 중...</div>;
+  }
+
+  if (!detailData) {
+    return <div className="p-8">데이터를 찾을 수 없습니다.</div>;
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <h1 className="text-2xl font-bold mb-6">상세 정보</h1>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">제목</label>
+          <input
+            type="text"
+            value={detailData.title}
+            onChange={(e) => setDetailData({...detailData, title: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+        </div>
+
+        <CommonCodeSelect
+          label="카테고리"
+          value={detailData.categoryCode}
+          onChange={(value) => setDetailData({...detailData, categoryCode: value})}
+          options={codes.category || []}
+          required
+        />
+
+        <CommonCodeSelect
+          label="상태"
+          value={detailData.statusCode}
+          onChange={(value) => setDetailData({...detailData, statusCode: value})}
+          options={codes.status || []}
+          required
+        />
+
+        <div className="flex gap-2 pt-4">
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+          >
+            저장
+          </button>
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+          >
+            취소
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// 다른 페이지에서 사용 예시
+// app/another/page.tsx
+export default function AnotherPage() {
+  // 단일 공통코드만 필요할 때
+  const { codes: categoryList } = useCommonCode('category');
+
+  // 또는 여러 개
+  const { codes } = useCommonCodes(['category', 'status', 'type']);
+
+  return (
+    <CommonCodeSelect
+      label="카테고리"
+      value={selectedValue}
+      onChange={setSelectedValue}
+      options={categoryList}
+    />
+  );
+}
