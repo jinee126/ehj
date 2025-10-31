@@ -18,7 +18,8 @@ export default function UserFormPage() {
     name: '',
     email: '',
     menuCode: '',
-    authCode: ''  // 👈 문자열 (하나만 선택)
+    authCode: '',  // 문자열 (하나만 선택)
+    useYn: 'Y'     // 👈 사용여부 추가 (Y/N)
   });
 
   const [loading, setLoading] = useState(false);
