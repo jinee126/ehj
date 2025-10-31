@@ -18,8 +18,8 @@ export default function UserFormPage() {
     name: '',
     email: '',
     menuCode: '',
-    authCode: '',  // 문자열 (하나만 선택)
-    useYn: 'Y'     // 👈 사용여부 추가 (Y/N)
+    authCode: '',
+    useYn: ''  // 👈 공통코드에서 가져올 값
   });
 
   const [loading, setLoading] = useState(false);
@@ -27,13 +27,16 @@ export default function UserFormPage() {
   // 공통코드
   const menuCodes = useAtomValue(commonCodeFamily('menu'));
   const authCodes = useAtomValue(commonCodeFamily('auth'));
+  const useYnCodes = useAtomValue(commonCodeFamily('useYn'));  // 👈 사용여부 공통코드
   const loadMenu = useSetAtom(loadCommonCodeFamily('menu'));
   const loadAuth = useSetAtom(loadCommonCodeFamily('auth'));
+  const loadUseYn = useSetAtom(loadCommonCodeFamily('useYn'));  // 👈 로드
 
   // 공통코드 로드
   useEffect(() => {
     loadMenu();
     loadAuth();
+    loadUseYn();  // 👈 사용여부 로드
   }, []);
 
   // 수정 모드일 때 데이터 로드
@@ -53,8 +56,8 @@ export default function UserFormPage() {
         name: data.name,
         email: data.email,
         menuCode: data.menuCode,
-        authCode: data.authCode || ''  // 서버에서 문자열로 받음
-        // 예: 'A01'
+        authCode: data.authCode || '',
+        useYn: data.useYn || 'Y'  // 서버에서 받음
       });
     } catch (error) {
       console.error('데이터 로딩 실패:', error);
@@ -235,6 +238,52 @@ export default function UserFormPage() {
           )}
         </div>
 
+        {/* 사용여부 - Radio Button */}
+        <div>
+          <label className="block text-sm font-medium mb-3">
+            사용여부 <span className="text-red-500">*</span>
+          </label>
+
+          <div className="flex gap-6">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="useYn"
+                value="Y"
+                checked={formData.useYn === 'Y'}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  useYn: e.target.value
+                })}
+                className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium">사용</span>
+            </label>
+
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="useYn"
+                value="N"
+                checked={formData.useYn === 'N'}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  useYn: e.target.value
+                })}
+                className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium">미사용</span>
+            </label>
+          </div>
+
+          {/* 미사용 선택 시 경고 메시지 */}
+          {formData.useYn === 'N' && (
+            <p className="text-sm text-amber-600 mt-2">
+              ⚠️ 미사용으로 설정하면 로그인할 수 없습니다.
+            </p>
+          )}
+        </div>
+
         {/* 버튼 */}
         <div className="flex gap-2 pt-4">
           <button
@@ -270,34 +319,29 @@ export default function UserFormPage() {
 
 /*
 초기 상태:
-formData.authCode = ''  // 빈 문자열
+formData = {
+  authCode: '',
+  useYn: 'Y'  // 기본값 사용
+}
 
 사용자가 "읽기권한(A01)" 체크:
-handleCheckboxChange('A01') 실행
-→ authCode를 'A01'로 설정
-→ formData.authCode = 'A01'
+formData.authCode = 'A01'
 
-사용자가 "쓰기권한(A02)" 체크:
-handleCheckboxChange('A02') 실행
-→ authCode를 'A02'로 설정 (A01은 자동 해제됨!)
-→ formData.authCode = 'A02'
-
-사용자가 같은 것("A02") 다시 클릭:
-handleCheckboxChange('A02') 실행
-→ authCode를 ''로 설정 (체크 해제)
-→ formData.authCode = ''
+사용자가 "미사용" 라디오 선택:
+formData.useYn = 'N'
 
 저장 시:
 {
   name: '홍길동',
   email: 'hong@example.com',
   menuCode: 'M02',
-  authCode: 'A02'  // 하나만
+  authCode: 'A02',
+  useYn: 'N'
 }
 */
 
 // ============================================
-// Radio처럼 동작하는 Checkbox (권장)
+// 다양한 Radio Button 스타일
 // ============================================
 
 export function UserFormPageRadioStyle() {
@@ -305,57 +349,142 @@ export function UserFormPageRadioStyle() {
     name: '',
     email: '',
     menuCode: '',
-    authCode: ''  // 하나만
+    authCode: '',
+    useYn: 'Y',
+    userType: 'NORMAL'  // 추가 예시
   });
 
   const authCodes = useAtomValue(commonCodeFamily('auth'));
 
-  // 더 간단한 방법 - 그냥 선택만 (해제 기능 없음)
-  const handleCheckboxChange = (authCode: string) => {
-    setFormData(prev => ({
-      ...prev,
-      authCode: authCode  // 항상 선택 (해제 안 됨)
-    }));
-  };
-
   return (
     <div className="max-w-2xl mx-auto p-8">
       <form className="space-y-6">
+        {/* 스타일 1: 기본 가로 배치 */}
         <div>
           <label className="block text-sm font-medium mb-3">
-            권한 <span className="text-red-500">*</span>
-            <span className="text-sm font-normal text-gray-500 ml-2">
-              (하나만 선택 가능)
-            </span>
+            사용여부 <span className="text-red-500">*</span>
           </label>
+          <div className="flex gap-6">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="useYn"
+                value="Y"
+                checked={formData.useYn === 'Y'}
+                onChange={(e) => setFormData({...formData, useYn: e.target.value})}
+                className="w-4 h-4 text-blue-600"
+              />
+              <span className="text-sm">사용</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="useYn"
+                value="N"
+                checked={formData.useYn === 'N'}
+                onChange={(e) => setFormData({...formData, useYn: e.target.value})}
+                className="w-4 h-4 text-blue-600"
+              />
+              <span className="text-sm">미사용</span>
+            </label>
+          </div>
+        </div>
 
-          <div className="space-y-2">
-            {authCodes?.map(auth => (
-              <label
-                key={auth.code}
-                className={`flex items-center space-x-3 p-3 border rounded-md cursor-pointer transition-colors ${
-                  formData.authCode === auth.code
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.authCode === auth.code}
-                  onChange={() => handleCheckboxChange(auth.code)}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium">{auth.name}</span>
-                  {/* 추가 설명이 필요하면 */}
-                  <p className="text-xs text-gray-500">
-                    {auth.code === 'A01' && '모든 권한을 가집니다'}
-                    {auth.code === 'A02' && '읽기 및 쓰기 가능'}
-                    {auth.code === 'A03' && '읽기만 가능'}
-                  </p>
+        {/* 스타일 2: 버튼 스타일 */}
+        <div>
+          <label className="block text-sm font-medium mb-3">
+            회원 유형
+          </label>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setFormData({...formData, userType: 'NORMAL'})}
+              className={`px-4 py-2 rounded-md border transition-colors ${
+                formData.userType === 'NORMAL'
+                  ? 'bg-blue-500 text-white border-blue-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              일반회원
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormData({...formData, userType: 'VIP'})}
+              className={`px-4 py-2 rounded-md border transition-colors ${
+                formData.userType === 'VIP'
+                  ? 'bg-blue-500 text-white border-blue-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              VIP회원
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormData({...formData, userType: 'ADMIN'})}
+              className={`px-4 py-2 rounded-md border transition-colors ${
+                formData.userType === 'ADMIN'
+                  ? 'bg-blue-500 text-white border-blue-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              관리자
+            </button>
+          </div>
+        </div>
+
+        {/* 스타일 3: 카드 스타일 */}
+        <div>
+          <label className="block text-sm font-medium mb-3">
+            사용여부 (카드형)
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label
+              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                formData.useYn === 'Y'
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <input
+                type="radio"
+                name="useYn2"
+                value="Y"
+                checked={formData.useYn === 'Y'}
+                onChange={(e) => setFormData({...formData, useYn: e.target.value})}
+                className="sr-only"
+              />
+              <div className="text-center">
+                <div className="text-2xl mb-2">✅</div>
+                <div className="font-medium">사용</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  정상적으로 사용 가능
                 </div>
-              </label>
-            ))}
+              </div>
+            </label>
+
+            <label
+              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                formData.useYn === 'N'
+                  ? 'border-red-500 bg-red-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <input
+                type="radio"
+                name="useYn2"
+                value="N"
+                checked={formData.useYn === 'N'}
+                onChange={(e) => setFormData({...formData, useYn: e.target.value})}
+                className="sr-only"
+              />
+              <div className="text-center">
+                <div className="text-2xl mb-2">❌</div>
+                <div className="font-medium">미사용</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  로그인 불가
+                </div>
+              </div>
+            </label>
           </div>
         </div>
       </form>
