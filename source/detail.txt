@@ -1,63 +1,138 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { commonCodeFamily, loadCommonCodeFamily } from '@/store/commonCodeAtoms';
 
-// ============================================
-// 방법 1: useEffect로 특정 필드 변경 감지 (추천 ⭐)
-// ============================================
+export default function UserFormPage() {
+  const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-export default function UserDetailPage1() {
+  // 수정 모드 판단 (id가 있으면 수정, 없으면 등록)
+  const isEditMode = !!params.id;
+  const mode = searchParams.get('mode'); // 'view', 'edit' 등
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     menuCode: '',
-    authCode: ''
+    authCode: ''  // 👈 문자열 (하나만 선택)
   });
 
+  const [loading, setLoading] = useState(false);
+
+  // 공통코드
   const menuCodes = useAtomValue(commonCodeFamily('menu'));
   const authCodes = useAtomValue(commonCodeFamily('auth'));
+  const loadMenu = useSetAtom(loadCommonCodeFamily('menu'));
+  const loadAuth = useSetAtom(loadCommonCodeFamily('auth'));
 
-  // 👇 menuCode가 변경되었을 때만 실행
+  // 공통코드 로드
   useEffect(() => {
-    if (formData.menuCode) {
-      console.log('메뉴가 변경되었습니다:', formData.menuCode);
+    loadMenu();
+    loadAuth();
+  }, []);
 
-      // 메뉴 변경 시 필요한 로직
-      // 예: 하위 데이터 로드, 다른 필드 초기화 등
-      handleMenuChange(formData.menuCode);
+  // 수정 모드일 때 데이터 로드
+  useEffect(() => {
+    if (isEditMode && params.id) {
+      fetchUserDetail();
     }
-  }, [formData.menuCode]);  // 👈 menuCode만 감지
+  }, [params.id]);
 
-  // 👇 authCode가 변경되었을 때만 실행
-  useEffect(() => {
-    if (formData.authCode) {
-      console.log('권한이 변경되었습니다:', formData.authCode);
-      handleAuthChange(formData.authCode);
+  const fetchUserDetail = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/users/${params.id}`);
+      const data = await response.json();
+
+      setFormData({
+        name: data.name,
+        email: data.email,
+        menuCode: data.menuCode,
+        authCode: data.authCode || ''  // 서버에서 문자열로 받음
+        // 예: 'A01'
+      });
+    } catch (error) {
+      console.error('데이터 로딩 실패:', error);
+    } finally {
+      setLoading(false);
     }
-  }, [formData.authCode]);  // 👈 authCode만 감지
-
-  // 👇 이름 또는 이메일이 변경되었을 때 실행
-  useEffect(() => {
-    console.log('이름 또는 이메일이 변경되었습니다');
-  }, [formData.name, formData.email]);  // 👈 둘 다 감지
-
-  const handleMenuChange = (menuCode: string) => {
-    console.log('메뉴 변경 처리:', menuCode);
-    // 예: 메뉴에 따라 권한 옵션 필터링
   };
 
-  const handleAuthChange = (authCode: string) => {
-    console.log('권한 변경 처리:', authCode);
-    // 예: 권한에 따라 경고 메시지 표시
+  // Checkbox 변경 처리 (하나만 선택)
+  const handleCheckboxChange = (authCode: string) => {
+    setFormData(prev => {
+      // 같은 것 클릭하면 해제, 다른 것 클릭하면 선택
+      if (prev.authCode === authCode) {
+        return {
+          ...prev,
+          authCode: ''  // 체크 해제
+        };
+      } else {
+        return {
+          ...prev,
+          authCode: authCode  // 새로운 것 선택 (기존 것은 자동 해제)
+        };
+      }
+    });
   };
+
+  // 저장
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const url = isEditMode
+        ? `/api/users/${params.id}`
+        : '/api/users';
+
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+        // {
+        //   name: '홍길동',
+        //   email: 'hong@example.com',
+        //   menuCode: 'M02',
+        //   authCodes: ['A01', 'A03']  // 체크된 권한들
+        // }
+      });
+
+      if (response.ok) {
+        alert(isEditMode ? '수정되었습니다.' : '등록되었습니다.');
+        router.push('/users');
+      }
+    } catch (error) {
+      console.error('저장 실패:', error);
+      alert('저장에 실패했습니다.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg">로딩 중...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto p-8">
-      <form className="space-y-4">
+      <h1 className="text-2xl font-bold mb-6">
+        {isEditMode ? '사용자 수정' : '사용자 등록'}
+      </h1>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* 이름 */}
         <div>
-          <label className="block text-sm font-medium mb-2">이름</label>
+          <label className="block text-sm font-medium mb-2">
+            이름 <span className="text-red-500">*</span>
+          </label>
           <input
             type="text"
             value={formData.name}
@@ -65,368 +140,239 @@ export default function UserDetailPage1() {
               ...formData,
               name: e.target.value
             })}
-            className="w-full px-3 py-2 border rounded"
+            disabled={isEditMode}  // 👈 수정 시 비활성화
+            className={`w-full px-3 py-2 border border-gray-300 rounded-md ${
+              isEditMode ? 'bg-gray-100 cursor-not-allowed' : ''
+            }`}
+            required
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">메뉴</label>
-          <select
-            value={formData.menuCode}
-            onChange={(e) => setFormData({
-              ...formData,
-              menuCode: e.target.value
-            })}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {menuCodes?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">권한</label>
-          <select
-            value={formData.authCode}
-            onChange={(e) => setFormData({
-              ...formData,
-              authCode: e.target.value
-            })}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {authCodes?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-// ============================================
-// 방법 2: onChange에서 직접 처리
-// ============================================
-
-export function UserDetailPage2() {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    menuCode: '',
-    authCode: ''
-  });
-
-  const menuCodes = useAtomValue(commonCodeFamily('menu'));
-  const authCodes = useAtomValue(commonCodeFamily('auth'));
-
-  // 메뉴 변경 처리
-  const handleMenuChange = (value: string) => {
-    console.log('메뉴 변경:', value);
-
-    // 1. formData 업데이트
-    setFormData({
-      ...formData,
-      menuCode: value,
-      authCode: ''  // 메뉴 변경 시 권한 초기화
-    });
-
-    // 2. 추가 로직 실행
-    if (value === 'M01') {
-      alert('관리자 메뉴를 선택하셨습니다');
-    }
-  };
-
-  // 권한 변경 처리
-  const handleAuthChange = (value: string) => {
-    console.log('권한 변경:', value);
-
-    setFormData({
-      ...formData,
-      authCode: value
-    });
-
-    if (value === 'A01') {
-      alert('슈퍼 관리자 권한입니다');
-    }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto p-8">
-      <form className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">메뉴</label>
-          <select
-            value={formData.menuCode}
-            onChange={(e) => handleMenuChange(e.target.value)}
-            // 👆 직접 핸들러 함수 호출
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {menuCodes?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">권한</label>
-          <select
-            value={formData.authCode}
-            onChange={(e) => handleAuthChange(e.target.value)}
-            // 👆 직접 핸들러 함수 호출
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {authCodes?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-// ============================================
-// 방법 3: 공통 핸들러 + 분기 처리
-// ============================================
-
-export function UserDetailPage3() {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    menuCode: '',
-    authCode: ''
-  });
-
-  const menuCodes = useAtomValue(commonCodeFamily('menu'));
-  const authCodes = useAtomValue(commonCodeFamily('auth'));
-
-  // 공통 변경 핸들러
-  const handleFieldChange = (field: string, value: string) => {
-    console.log(`${field} 변경:`, value);
-
-    // 필드별 분기 처리
-    switch (field) {
-      case 'menuCode':
-        console.log('메뉴 변경 로직 실행');
-        // 메뉴 변경 시 권한 초기화
-        setFormData({
-          ...formData,
-          menuCode: value,
-          authCode: ''
-        });
-        break;
-
-      case 'authCode':
-        console.log('권한 변경 로직 실행');
-        setFormData({
-          ...formData,
-          authCode: value
-        });
-
-        // 특정 권한 선택 시 경고
-        if (value === 'A01') {
-          alert('높은 권한입니다!');
-        }
-        break;
-
-      case 'name':
-        console.log('이름 변경 로직 실행');
-        setFormData({
-          ...formData,
-          name: value
-        });
-        break;
-
-      default:
-        setFormData({
-          ...formData,
-          [field]: value
-        });
-    }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto p-8">
-      <form className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">이름</label>
-          <input
-            type="text"
-            value={formData.name}
-            onChange={(e) => handleFieldChange('name', e.target.value)}
-            className="w-full px-3 py-2 border rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">메뉴</label>
-          <select
-            value={formData.menuCode}
-            onChange={(e) => handleFieldChange('menuCode', e.target.value)}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {menuCodes?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">권한</label>
-          <select
-            value={formData.authCode}
-            onChange={(e) => handleFieldChange('authCode', e.target.value)}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {authCodes?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-// ============================================
-// 방법 4: 실전 예시 - 메뉴 변경 시 권한 필터링
-// ============================================
-
-export function UserDetailPageAdvanced() {
-  const [formData, setFormData] = useState({
-    menuCode: '',
-    authCode: ''
-  });
-
-  const [availableAuths, setAvailableAuths] = useState<any[]>([]);
-
-  const menuCodes = useAtomValue(commonCodeFamily('menu'));
-  const authCodes = useAtomValue(commonCodeFamily('auth'));
-
-  // 메뉴 변경 감지 → 권한 필터링
-  useEffect(() => {
-    if (formData.menuCode && authCodes) {
-      console.log('메뉴 변경됨, 권한 필터링 중...');
-
-      // 메뉴에 따라 사용 가능한 권한 필터링
-      let filtered = authCodes;
-
-      if (formData.menuCode === 'M01') {
-        // 관리자 메뉴 → 모든 권한 가능
-        filtered = authCodes;
-      } else if (formData.menuCode === 'M02') {
-        // 일반 메뉴 → 일반 권한만
-        filtered = authCodes.filter(auth =>
-          auth.code !== 'A01' // 슈퍼관리자 제외
-        );
-      }
-
-      setAvailableAuths(filtered);
-
-      // 현재 선택된 권한이 필터링된 목록에 없으면 초기화
-      if (formData.authCode && !filtered.find(a => a.code === formData.authCode)) {
-        setFormData(prev => ({
-          ...prev,
-          authCode: ''
-        }));
-      }
-    }
-  }, [formData.menuCode, authCodes]);
-
-  return (
-    <div className="max-w-2xl mx-auto p-8">
-      <form className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">메뉴</label>
-          <select
-            value={formData.menuCode}
-            onChange={(e) => setFormData({
-              ...formData,
-              menuCode: e.target.value
-            })}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">선택하세요</option>
-            {menuCodes?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">
-            권한 (메뉴에 따라 자동 필터링됨)
-          </label>
-          <select
-            value={formData.authCode}
-            onChange={(e) => setFormData({
-              ...formData,
-              authCode: e.target.value
-            })}
-            className="w-full px-3 py-2 border rounded"
-            disabled={!formData.menuCode}
-          >
-            <option value="">선택하세요</option>
-            {availableAuths?.map(item => (
-              <option key={item.code} value={item.code}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-          {!formData.menuCode && (
+          {isEditMode && (
             <p className="text-sm text-gray-500 mt-1">
-              먼저 메뉴를 선택하세요
+              이름은 수정할 수 없습니다
             </p>
           )}
         </div>
+
+        {/* 이메일 */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            이메일 <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="email"
+            value={formData.email}
+            onChange={(e) => setFormData({
+              ...formData,
+              email: e.target.value
+            })}
+            disabled={isEditMode}  // 👈 수정 시 비활성화
+            className={`w-full px-3 py-2 border border-gray-300 rounded-md ${
+              isEditMode ? 'bg-gray-100 cursor-not-allowed' : ''
+            }`}
+            required
+          />
+          {isEditMode && (
+            <p className="text-sm text-gray-500 mt-1">
+              이메일은 수정할 수 없습니다
+            </p>
+          )}
+        </div>
+
+        {/* 메뉴 */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            메뉴 <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={formData.menuCode}
+            onChange={(e) => setFormData({
+              ...formData,
+              menuCode: e.target.value
+            })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            required
+          >
+            <option value="">선택하세요</option>
+            {menuCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 권한 - Checkbox (하나만 선택) */}
+        <div>
+          <label className="block text-sm font-medium mb-3">
+            권한 <span className="text-red-500">*</span>
+          </label>
+
+          <div className="space-y-2">
+            {authCodes?.map(auth => (
+              <label
+                key={auth.code}
+                className="flex items-center space-x-3 p-3 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={formData.authCode === auth.code}
+                  onChange={() => handleCheckboxChange(auth.code)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium">{auth.name}</span>
+              </label>
+            ))}
+          </div>
+
+          {/* 선택된 권한 표시 */}
+          {formData.authCode && (
+            <div className="mt-3 p-3 bg-blue-50 rounded-md">
+              <p className="text-sm text-blue-800">
+                선택된 권한: {authCodes?.find(a => a.code === formData.authCode)?.name}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* 버튼 */}
+        <div className="flex gap-2 pt-4">
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+          >
+            {isEditMode ? '수정' : '등록'}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+          >
+            취소
+          </button>
+        </div>
+      </form>
+
+      {/* 디버깅용 */}
+      <div className="mt-8 p-4 bg-gray-100 rounded">
+        <h3 className="font-bold mb-2">현재 formData:</h3>
+        <pre className="text-sm overflow-auto">
+          {JSON.stringify(formData, null, 2)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Checkbox 동작 예시 (하나만 선택)
+// ============================================
+
+/*
+초기 상태:
+formData.authCode = ''  // 빈 문자열
+
+사용자가 "읽기권한(A01)" 체크:
+handleCheckboxChange('A01') 실행
+→ authCode를 'A01'로 설정
+→ formData.authCode = 'A01'
+
+사용자가 "쓰기권한(A02)" 체크:
+handleCheckboxChange('A02') 실행
+→ authCode를 'A02'로 설정 (A01은 자동 해제됨!)
+→ formData.authCode = 'A02'
+
+사용자가 같은 것("A02") 다시 클릭:
+handleCheckboxChange('A02') 실행
+→ authCode를 ''로 설정 (체크 해제)
+→ formData.authCode = ''
+
+저장 시:
+{
+  name: '홍길동',
+  email: 'hong@example.com',
+  menuCode: 'M02',
+  authCode: 'A02'  // 하나만
+}
+*/
+
+// ============================================
+// Radio처럼 동작하는 Checkbox (권장)
+// ============================================
+
+export function UserFormPageRadioStyle() {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    menuCode: '',
+    authCode: ''  // 하나만
+  });
+
+  const authCodes = useAtomValue(commonCodeFamily('auth'));
+
+  // 더 간단한 방법 - 그냥 선택만 (해제 기능 없음)
+  const handleCheckboxChange = (authCode: string) => {
+    setFormData(prev => ({
+      ...prev,
+      authCode: authCode  // 항상 선택 (해제 안 됨)
+    }));
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <form className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium mb-3">
+            권한 <span className="text-red-500">*</span>
+            <span className="text-sm font-normal text-gray-500 ml-2">
+              (하나만 선택 가능)
+            </span>
+          </label>
+
+          <div className="space-y-2">
+            {authCodes?.map(auth => (
+              <label
+                key={auth.code}
+                className={`flex items-center space-x-3 p-3 border rounded-md cursor-pointer transition-colors ${
+                  formData.authCode === auth.code
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={formData.authCode === auth.code}
+                  onChange={() => handleCheckboxChange(auth.code)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <div>
+                  <span className="text-sm font-medium">{auth.name}</span>
+                  {/* 추가 설명이 필요하면 */}
+                  <p className="text-xs text-gray-500">
+                    {auth.code === 'A01' && '모든 권한을 가집니다'}
+                    {auth.code === 'A02' && '읽기 및 쓰기 가능'}
+                    {auth.code === 'A03' && '읽기만 가능'}
+                  </p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
       </form>
     </div>
   );
 }
 
 // ============================================
-// 정리: 언제 어떤 방법을 사용?
+// 라우팅 예시
 // ============================================
 
 /*
-방법 1 (useEffect):
-  - 언제? 변경 후 추가 로직이 필요할 때
-  - 예: API 호출, 다른 필드 업데이트, 복잡한 계산
-  ✅ 추천: 의존적인 데이터 처리
+등록 페이지:
+/users/new
+→ params.id 없음 → isEditMode = false
 
-방법 2 (onChange 직접 처리):
-  - 언제? 간단한 로직, 즉시 실행
-  - 예: alert, 간단한 유효성 검사
-  ✅ 추천: 단순한 1회성 작업
-
-방법 3 (공통 핸들러):
-  - 언제? 여러 필드가 비슷한 로직
-  - 예: 로깅, 공통 유효성 검사
-  ✅ 추천: 코드 중복 제거
-
-방법 4 (실전):
-  - 언제? 필드 간 의존성이 있을 때
-  - 예: 메뉴 선택 → 권한 필터링
-  ✅ 추천: 복잡한 비즈니스 로직
+수정 페이지:
+/users/123
+→ params.id = '123' → isEditMode = true
+→ 데이터 로드 후 name, email disabled
 */
