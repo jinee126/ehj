@@ -1,0 +1,432 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { commonCodeFamily, loadCommonCodeFamily } from '@/store/commonCodeAtoms';
+
+// ============================================
+// 방법 1: useEffect로 특정 필드 변경 감지 (추천 ⭐)
+// ============================================
+
+export default function UserDetailPage1() {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    menuCode: '',
+    authCode: ''
+  });
+
+  const menuCodes = useAtomValue(commonCodeFamily('menu'));
+  const authCodes = useAtomValue(commonCodeFamily('auth'));
+
+  // 👇 menuCode가 변경되었을 때만 실행
+  useEffect(() => {
+    if (formData.menuCode) {
+      console.log('메뉴가 변경되었습니다:', formData.menuCode);
+
+      // 메뉴 변경 시 필요한 로직
+      // 예: 하위 데이터 로드, 다른 필드 초기화 등
+      handleMenuChange(formData.menuCode);
+    }
+  }, [formData.menuCode]);  // 👈 menuCode만 감지
+
+  // 👇 authCode가 변경되었을 때만 실행
+  useEffect(() => {
+    if (formData.authCode) {
+      console.log('권한이 변경되었습니다:', formData.authCode);
+      handleAuthChange(formData.authCode);
+    }
+  }, [formData.authCode]);  // 👈 authCode만 감지
+
+  // 👇 이름 또는 이메일이 변경되었을 때 실행
+  useEffect(() => {
+    console.log('이름 또는 이메일이 변경되었습니다');
+  }, [formData.name, formData.email]);  // 👈 둘 다 감지
+
+  const handleMenuChange = (menuCode: string) => {
+    console.log('메뉴 변경 처리:', menuCode);
+    // 예: 메뉴에 따라 권한 옵션 필터링
+  };
+
+  const handleAuthChange = (authCode: string) => {
+    console.log('권한 변경 처리:', authCode);
+    // 예: 권한에 따라 경고 메시지 표시
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <form className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">이름</label>
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => setFormData({
+              ...formData,
+              name: e.target.value
+            })}
+            className="w-full px-3 py-2 border rounded"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">메뉴</label>
+          <select
+            value={formData.menuCode}
+            onChange={(e) => setFormData({
+              ...formData,
+              menuCode: e.target.value
+            })}
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="">선택하세요</option>
+            {menuCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">권한</label>
+          <select
+            value={formData.authCode}
+            onChange={(e) => setFormData({
+              ...formData,
+              authCode: e.target.value
+            })}
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="">선택하세요</option>
+            {authCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ============================================
+// 방법 2: onChange에서 직접 처리
+// ============================================
+
+export function UserDetailPage2() {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    menuCode: '',
+    authCode: ''
+  });
+
+  const menuCodes = useAtomValue(commonCodeFamily('menu'));
+  const authCodes = useAtomValue(commonCodeFamily('auth'));
+
+  // 메뉴 변경 처리
+  const handleMenuChange = (value: string) => {
+    console.log('메뉴 변경:', value);
+
+    // 1. formData 업데이트
+    setFormData({
+      ...formData,
+      menuCode: value,
+      authCode: ''  // 메뉴 변경 시 권한 초기화
+    });
+
+    // 2. 추가 로직 실행
+    if (value === 'M01') {
+      alert('관리자 메뉴를 선택하셨습니다');
+    }
+  };
+
+  // 권한 변경 처리
+  const handleAuthChange = (value: string) => {
+    console.log('권한 변경:', value);
+
+    setFormData({
+      ...formData,
+      authCode: value
+    });
+
+    if (value === 'A01') {
+      alert('슈퍼 관리자 권한입니다');
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <form className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">메뉴</label>
+          <select
+            value={formData.menuCode}
+            onChange={(e) => handleMenuChange(e.target.value)}
+            // 👆 직접 핸들러 함수 호출
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="">선택하세요</option>
+            {menuCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">권한</label>
+          <select
+            value={formData.authCode}
+            onChange={(e) => handleAuthChange(e.target.value)}
+            // 👆 직접 핸들러 함수 호출
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="">선택하세요</option>
+            {authCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ============================================
+// 방법 3: 공통 핸들러 + 분기 처리
+// ============================================
+
+export function UserDetailPage3() {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    menuCode: '',
+    authCode: ''
+  });
+
+  const menuCodes = useAtomValue(commonCodeFamily('menu'));
+  const authCodes = useAtomValue(commonCodeFamily('auth'));
+
+  // 공통 변경 핸들러
+  const handleFieldChange = (field: string, value: string) => {
+    console.log(`${field} 변경:`, value);
+
+    // 필드별 분기 처리
+    switch (field) {
+      case 'menuCode':
+        console.log('메뉴 변경 로직 실행');
+        // 메뉴 변경 시 권한 초기화
+        setFormData({
+          ...formData,
+          menuCode: value,
+          authCode: ''
+        });
+        break;
+
+      case 'authCode':
+        console.log('권한 변경 로직 실행');
+        setFormData({
+          ...formData,
+          authCode: value
+        });
+
+        // 특정 권한 선택 시 경고
+        if (value === 'A01') {
+          alert('높은 권한입니다!');
+        }
+        break;
+
+      case 'name':
+        console.log('이름 변경 로직 실행');
+        setFormData({
+          ...formData,
+          name: value
+        });
+        break;
+
+      default:
+        setFormData({
+          ...formData,
+          [field]: value
+        });
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <form className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">이름</label>
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => handleFieldChange('name', e.target.value)}
+            className="w-full px-3 py-2 border rounded"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">메뉴</label>
+          <select
+            value={formData.menuCode}
+            onChange={(e) => handleFieldChange('menuCode', e.target.value)}
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="">선택하세요</option>
+            {menuCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">권한</label>
+          <select
+            value={formData.authCode}
+            onChange={(e) => handleFieldChange('authCode', e.target.value)}
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="">선택하세요</option>
+            {authCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ============================================
+// 방법 4: 실전 예시 - 메뉴 변경 시 권한 필터링
+// ============================================
+
+export function UserDetailPageAdvanced() {
+  const [formData, setFormData] = useState({
+    menuCode: '',
+    authCode: ''
+  });
+
+  const [availableAuths, setAvailableAuths] = useState<any[]>([]);
+
+  const menuCodes = useAtomValue(commonCodeFamily('menu'));
+  const authCodes = useAtomValue(commonCodeFamily('auth'));
+
+  // 메뉴 변경 감지 → 권한 필터링
+  useEffect(() => {
+    if (formData.menuCode && authCodes) {
+      console.log('메뉴 변경됨, 권한 필터링 중...');
+
+      // 메뉴에 따라 사용 가능한 권한 필터링
+      let filtered = authCodes;
+
+      if (formData.menuCode === 'M01') {
+        // 관리자 메뉴 → 모든 권한 가능
+        filtered = authCodes;
+      } else if (formData.menuCode === 'M02') {
+        // 일반 메뉴 → 일반 권한만
+        filtered = authCodes.filter(auth =>
+          auth.code !== 'A01' // 슈퍼관리자 제외
+        );
+      }
+
+      setAvailableAuths(filtered);
+
+      // 현재 선택된 권한이 필터링된 목록에 없으면 초기화
+      if (formData.authCode && !filtered.find(a => a.code === formData.authCode)) {
+        setFormData(prev => ({
+          ...prev,
+          authCode: ''
+        }));
+      }
+    }
+  }, [formData.menuCode, authCodes]);
+
+  return (
+    <div className="max-w-2xl mx-auto p-8">
+      <form className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">메뉴</label>
+          <select
+            value={formData.menuCode}
+            onChange={(e) => setFormData({
+              ...formData,
+              menuCode: e.target.value
+            })}
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="">선택하세요</option>
+            {menuCodes?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            권한 (메뉴에 따라 자동 필터링됨)
+          </label>
+          <select
+            value={formData.authCode}
+            onChange={(e) => setFormData({
+              ...formData,
+              authCode: e.target.value
+            })}
+            className="w-full px-3 py-2 border rounded"
+            disabled={!formData.menuCode}
+          >
+            <option value="">선택하세요</option>
+            {availableAuths?.map(item => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          {!formData.menuCode && (
+            <p className="text-sm text-gray-500 mt-1">
+              먼저 메뉴를 선택하세요
+            </p>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ============================================
+// 정리: 언제 어떤 방법을 사용?
+// ============================================
+
+/*
+방법 1 (useEffect):
+  - 언제? 변경 후 추가 로직이 필요할 때
+  - 예: API 호출, 다른 필드 업데이트, 복잡한 계산
+  ✅ 추천: 의존적인 데이터 처리
+
+방법 2 (onChange 직접 처리):
+  - 언제? 간단한 로직, 즉시 실행
+  - 예: alert, 간단한 유효성 검사
+  ✅ 추천: 단순한 1회성 작업
+
+방법 3 (공통 핸들러):
+  - 언제? 여러 필드가 비슷한 로직
+  - 예: 로깅, 공통 유효성 검사
+  ✅ 추천: 코드 중복 제거
+
+방법 4 (실전):
+  - 언제? 필드 간 의존성이 있을 때
+  - 예: 메뉴 선택 → 권한 필터링
+  ✅ 추천: 복잡한 비즈니스 로직
+*/
