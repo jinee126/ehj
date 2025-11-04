@@ -1,0 +1,1 @@
+keytool -import -alias elasticsearch-ca -file ca.pem -keystore truststore.jks -storepass changeit
