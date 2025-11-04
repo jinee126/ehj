@@ -1,1 +1,4 @@
 keytool -import -alias elasticsearch-ca -file ca.pem -keystore truststore.jks -storepass changeit
+
+
+openssl s_client -showcerts -connect <ES_HOST>:9200 </dev/null
