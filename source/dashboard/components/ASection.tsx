@@ -1,15 +1,15 @@
-import SectionCard from "./SectionCard";
 import { getOverview } from "@/lib/data";
 
 export default async function ASection() {
-    const data = await getOverview(); // 서버에서 fetch
+    const data = await getOverview();
     return (
-        <SectionCard title="A: 개요">
+        <section className="rounded-2xl border p-4 bg-white">
+            <h2 className="text-lg font-semibold mb-3">A: 개요</h2>
             <ul className="text-sm leading-6">
                 <li>총 사용자: {data.totalUsers.toLocaleString()}</li>
                 <li>오늘 활성: {data.activeToday.toLocaleString()}</li>
                 <li>에러율: {data.errorRate}%</li>
             </ul>
-        </SectionCard>
+        </section>
     );
 }
