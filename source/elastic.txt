@@ -1,0 +1,138 @@
+// DTO 클래스
+@Data
+@Builder
+public class ServiceComparisonDto {
+    private String key;
+    private Integer yesterday;      // 어제
+    private Integer dayBefore;      // 그제
+    private Integer sevenDaysAgo;   // 7일전
+    private Integer oneMonthAgo;    // 한달전
+
+    private Integer dayBeforeDiff;      // 그제 대비 증감
+    private Double dayBeforeRate;       // 그제 대비 증감률
+    private Integer sevenDaysDiff;      // 7일전 대비 증감
+    private Double sevenDaysRate;       // 7일전 대비 증감률
+    private Integer oneMonthDiff;       // 한달전 대비 증감
+    private Double oneMonthRate;        // 한달전 대비 증감률
+}
+
+// Service 클래스
+@Service
+@RequiredArgsConstructor
+public class ServiceComparisonService {
+
+    private final ElasticsearchOperations elasticsearchOperations;
+
+    public List<ServiceComparisonDto> getServiceComparison() {
+        // 1. 각 날짜별 데이터 조회
+        Map<String, Integer> yesterdayData = getDataByDate(LocalDate.now().minusDays(1));
+        Map<String, Integer> dayBeforeData = getDataByDate(LocalDate.now().minusDays(2));
+        Map<String, Integer> sevenDaysAgoData = getDataByDate(LocalDate.now().minusDays(7));
+        Map<String, Integer> oneMonthAgoData = getDataByDate(LocalDate.now().minusMonths(1));
+
+        // 2. 어제 데이터 기준으로 비교 데이터 생성
+        List<ServiceComparisonDto> result = new ArrayList<>();
+
+        for (String key : yesterdayData.keySet()) {
+            Integer yesterdayCount = yesterdayData.get(key);
+            Integer dayBeforeCount = dayBeforeData.getOrDefault(key, 0);
+            Integer sevenDaysCount = sevenDaysAgoData.getOrDefault(key, 0);
+            Integer oneMonthCount = oneMonthAgoData.getOrDefault(key, 0);
+
+            ServiceComparisonDto dto = ServiceComparisonDto.builder()
+                    .key(key)
+                    .yesterday(yesterdayCount)
+                    .dayBefore(dayBeforeCount)
+                    .sevenDaysAgo(sevenDaysCount)
+                    .oneMonthAgo(oneMonthCount)
+                    // 증감 계산
+                    .dayBeforeDiff(calculateDiff(yesterdayCount, dayBeforeCount))
+                    .dayBeforeRate(calculateRate(yesterdayCount, dayBeforeCount))
+                    .sevenDaysDiff(calculateDiff(yesterdayCount, sevenDaysCount))
+                    .sevenDaysRate(calculateRate(yesterdayCount, sevenDaysCount))
+                    .oneMonthDiff(calculateDiff(yesterdayCount, oneMonthCount))
+                    .oneMonthRate(calculateRate(yesterdayCount, oneMonthCount))
+                    .build();
+
+            result.add(dto);
+        }
+
+        // 3. 어제 데이터 기준으로 정렬 (많은 순)
+        result.sort((a, b) -> b.getYesterday().compareTo(a.getYesterday()));
+
+        return result;
+    }
+
+    // 엘라스틱서치에서 특정 날짜의 데이터 조회
+    private Map<String, Integer> getDataByDate(LocalDate date) {
+        // 날짜 범위 설정 (해당 날짜 00:00:00 ~ 23:59:59)
+        LocalDateTime startOfDay = date.atStartOfDay();
+        LocalDateTime endOfDay = date.atTime(23, 59, 59);
+
+        // Elasticsearch 쿼리 생성
+        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery()
+                .must(QueryBuilders.rangeQuery("timestamp")
+                        .gte(startOfDay)
+                        .lte(endOfDay));
+
+        // Aggregation으로 key별 카운트
+        NativeSearchQuery searchQuery = new NativeSearchQueryBuilder()
+                .withQuery(boolQuery)
+                .addAggregation(
+                        AggregationBuilders.terms("key_count")
+                                .field("key.keyword")  // key 필드명에 맞게 수정
+                                .size(10000)  // 충분히 큰 값으로 설정
+                )
+                .build();
+
+        SearchHits<YourElasticsearchEntity> searchHits =
+                elasticsearchOperations.search(searchQuery, YourElasticsearchEntity.class);
+
+        // Aggregation 결과 파싱
+        Map<String, Integer> resultMap = new HashMap<>();
+
+        if (searchHits.hasAggregations()) {
+            Aggregations aggregations = (Aggregations) searchHits.getAggregations();
+            Terms keyCountAgg = aggregations.get("key_count");
+
+            for (Terms.Bucket bucket : keyCountAgg.getBuckets()) {
+                String key = bucket.getKeyAsString();
+                int count = (int) bucket.getDocCount();
+                resultMap.put(key, count);
+            }
+        }
+
+        return resultMap;
+    }
+
+    // 증감 계산
+    private Integer calculateDiff(Integer current, Integer previous) {
+        if (current == null) return null;
+        if (previous == null || previous == 0) return current;
+        return current - previous;
+    }
+
+    // 증감률 계산 (백분율)
+    private Double calculateRate(Integer current, Integer previous) {
+        if (current == null || previous == null || previous == 0) {
+            return null;
+        }
+        double rate = ((double) (current - previous) / previous) * 100;
+        return Math.round(rate * 100.0) / 100.0; // 소수점 둘째자리까지
+    }
+}
+
+// Controller
+@RestController
+@RequestMapping("/api/service-comparison")
+@RequiredArgsConstructor
+public class ServiceComparisonController {
+
+    private final ServiceComparisonService serviceComparisonService;
+
+    @GetMapping
+    public ResponseEntity<List<ServiceComparisonDto>> getComparison() {
+        List<ServiceComparisonDto> result = serviceComparisonService.getServiceComparison();
+        return ResponseEntity.ok(result);
+    }
+}
