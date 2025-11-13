@@ -1,0 +1,58 @@
+SearchRequest searchRequest = new SearchRequest("your-index-name");
+SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+
+// 1. Query: 날짜 범위로 필터링
+sourceBuilder.query(
+    QueryBuilders.rangeQuery("timestamp")
+        .gte("2024-11-01")
+        .lte("2024-11-13")
+);
+
+// 2. Aggregation: A 키로 그룹화 -> 그 안에서 서비스별 카운트
+sourceBuilder.aggregation(
+    AggregationBuilders.terms("group_by_A")
+        .field("A.keyword")  // A 키로 그룹화
+        .size(100)
+        .subAggregation(  // 하위 집계: 서비스별 카운트
+            AggregationBuilders.terms("service_count")
+                .field("service.keyword")
+                .size(50)
+        )
+);
+
+sourceBuilder.size(0);  // 검색 결과는 필요없고 집계만
+searchRequest.source(sourceBuilder);
+
+// 3. 실행
+SearchResponse response = client.search(searchRequest, RequestOptions.DEFAULT);
+
+// 4. 결과 파싱
+Terms groupByA = response.getAggregations().get("group_by_A");
+for (Terms.Bucket aBucket : groupByA.getBuckets()) {
+    String aValue = aBucket.getKeyAsString();
+    long aCount = aBucket.getDocCount();
+    
+    System.out.println("A = " + aValue + " (총 " + aCount + "건)");
+    
+    // A 그룹 내의 서비스별 카운트
+    Terms serviceAgg = aBucket.getAggregations().get("service_count");
+    for (Terms.Bucket serviceBucket : serviceAgg.getBuckets()) {
+        String serviceName = serviceBucket.getKeyAsString();
+        long serviceCount = serviceBucket.getDocCount();
+        System.out.println("  └─ " + serviceName + ": " + serviceCount);
+    }
+    System.out.println();
+}
+```
+
+## 결과 예시
+```
+A = user123 (총 150건)
+  └─ login: 50
+  └─ payment: 30
+  └─ search: 70
+
+A = user456 (총 200건)
+  └─ login: 80
+  └─ payment: 60
+  └─ search: 60
