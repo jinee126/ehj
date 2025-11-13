@@ -56,3 +56,22 @@ A = user456 (총 200건)
   └─ login: 80
   └─ payment: 60
   └─ search: 60
+
+
+
+  sourceBuilder.aggregation(
+      AggregationBuilders.terms("group_by_A")
+          .field("A.keyword")
+          .size(100)
+          .subAggregation(
+              AggregationBuilders.terms("service_count")
+                  .field("service.keyword")
+                  .size(50)
+                  .includeExclude(
+                      new IncludeExclude(
+                          new String[]{"login", "payment", "search"},  // 포함할 값
+                          null  // 제외할 값
+                      )
+                  )
+          )
+  );
