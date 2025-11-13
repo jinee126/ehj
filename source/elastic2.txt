@@ -75,3 +75,32 @@ A = user456 (총 200건)
                   )
           )
   );
+
+
+  return new SearchRequest.Builder()
+      .index(ROUTE_GATEWAY_PROD)
+      .size(size)
+      .query(query)
+      .sort(Builder s -> s.field(Builder f -> f.field(DATETIME_FIELD).order(SortOrder.Desc)))
+
+      .aggregations("LOG_GROUPS", Builder a -> a
+          .terms(Builder t -> t
+              .field("log.keyword")
+              .size(100)
+          )
+          .aggregations("MAP_FILTER", Builder fa -> fa
+              .filter(Builder f -> f
+                  .wildcard(Builder w -> w
+                      .field("Log.message.service.keyword")
+                      .value("MAP*")
+                  )
+              )
+              .aggregations("SERVICE_COUNT", Builder sa -> sa
+                  .terms(Builder st -> st
+                      .field("Log.message.service.keyword")
+                      .size(50)
+                  )
+              )
+          )
+      )
+      .build();
