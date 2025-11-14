@@ -1,4 +1,4 @@
-public SearchRequest buildSearchRequestChaining() {
+public SearchRequest buildSearchRequestConcise() {
     String scriptSource =
         "String keyword = doc['log.message.service.keyword'].value; " +
         "if (keyword.startsWith('MAP')) return 'MAP'; " +
@@ -12,43 +12,26 @@ public SearchRequest buildSearchRequestChaining() {
         "   keyword.startsWith('VIRTUALIZATION')) return 'DIRECTION'; " +
         "return 'ETC';";
 
-    return new SearchRequest.Builder()
+    return SearchRequest.of(s -> s
         .index("your-index-name")
         .size(0)
-        .query(new Query.Builder()
-            .bool(new BoolQuery.Builder()
-                .filter(new Query.Builder()
-                    .term(new TermQuery.Builder()
-                        .field("log.file.type")
-                        .value("rest")
-                        .build())
-                    .build())
-                .filter(new Query.Builder()
-                    .term(new TermQuery.Builder()
-                        .field("log.message.status")
-                        .value("REQUEST")
-                        .build())
-                    .build())
-                .build())
-            .build())
-        .aggregations("aggs", new Aggregation.Builder()
-            .aggregations("KEY_COUNT", new Aggregation.Builder()
-                .terms(new TermsAggregation.Builder()
-                    .field("log.message.key")
-                    .size(1000)
-                    .build())
-                .aggregations("service_group", new Aggregation.Builder()
-                    .terms(new TermsAggregation.Builder()
-                        .script(s -> s
-                            .inline(i -> i
-                                .source(scriptSource)
-                                .lang("painless")
-                            )
-                        )
+        .query(q -> q.bool(b -> b
+            .filter(f -> f.term(t -> t.field("log.file.type").value("rest")))
+            .filter(f -> f.term(t -> t.field("log.message.status").value("REQUEST")))
+        ))
+        .aggregations("aggs", a -> a
+            .aggregations("KEY_COUNT", ka -> ka
+                .terms(t -> t.field("log.message.key").size(1000))
+                .aggregations("service_group", sa -> sa
+                    .terms(ts -> ts
+                        .script(sc -> sc.inline(i -> i
+                            .source(scriptSource)
+                            .lang("painless")
+                        ))
                         .size(10000000)
-                        .build())
-                    .build())
-                .build())
-            .build())
-        .build();
+                    )
+                )
+            )
+        )
+    );
 }
