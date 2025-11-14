@@ -1,0 +1,39 @@
+{
+  "size": 0,
+  "aggs": {
+    "KEY_COUNT": {
+      "terms": {
+        "field": "log.message.key",
+        "size": 1000
+      },
+      "aggs": {
+        "service_group": {
+          "terms": {
+            "script": {
+              "source": """
+                String keyword = doc['log.message.service.keyword'].value;
+                if (keyword.startsWith('Map') || keyword.startsWith('load')) {
+                  return 'map';
+                }
+                return keyword;
+              """,
+              "lang": "painless"
+            },
+            "size": 10000000
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+이렇게 하면 결과가:
+```
+A key
+  - map: 1234건 (Map*, load* 모두 합쳐진 수)
+  - other_service: 567건
+  
+B key  
+  - map: 890건 (Map*, load* 모두 합쳐진 수)
+  - another_service: 345건
