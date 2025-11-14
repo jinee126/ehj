@@ -1,27 +1,34 @@
-SearchResponse<Void> response = client.search(request, Void.class);
+import reactor.core.publisher.Mono;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
 
-// KEY_COUNT aggregation 결과
-var keyCountBuckets = response.aggregations()
-    .get("KEY_COUNT")
-    .sterms()
-    .buckets()
-    .array();
+// Reactive 방식으로 실행
+Mono<SearchResponse<Void>> responseMono = reactiveElasticsearchClient.search(request, Void.class);
 
-for (var keyBucket : keyCountBuckets) {
-    String key = keyBucket.key();
-    long docCount = keyBucket.docCount();
-    
-    System.out.println("Key: " + key + ", Count: " + docCount);
-    
-    // service_group aggregation 결과
-    var serviceGroupBuckets = keyBucket.aggregations()
-        .get("service_group")
+// 결과 처리
+responseMono.subscribe(response -> {
+    // KEY_COUNT aggregation 결과
+    var keyCountBuckets = response.aggregations()
+        .get("KEY_COUNT")
         .sterms()
         .buckets()
         .array();
     
-    for (var serviceBucket : serviceGroupBuckets) {
-        System.out.println("  Service: " + serviceBucket.key() + 
-                           ", Count: " + serviceBucket.docCount());
+    for (var keyBucket : keyCountBuckets) {
+        String key = keyBucket.key();
+        long docCount = keyBucket.docCount();
+        
+        System.out.println("Key: " + key + ", Count: " + docCount);
+        
+        // service_group aggregation 결과
+        var serviceGroupBuckets = keyBucket.aggregations()
+            .get("service_group")
+            .sterms()
+            .buckets()
+            .array();
+        
+        for (var serviceBucket : serviceGroupBuckets) {
+            System.out.println("  Service: " + serviceBucket.key() + 
+                               ", Count: " + serviceBucket.docCount());
+        }
     }
-}
+});
