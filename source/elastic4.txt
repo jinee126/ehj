@@ -1,0 +1,98 @@
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.TermQuery;
+import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
+import co.elastic.clients.json.JsonData;
+
+public class ElasticsearchQueryExample {
+
+    public SearchRequest buildSearchRequest() {
+        return SearchRequest.of(s -> s
+            .index("your-index-name")  // 인덱스 이름 설정
+            .size(0)
+            .query(q -> q
+                .bool(b -> b
+                    .filter(f -> f
+                        .term(t -> t
+                            .field("log.file.type")
+                            .value("rest")
+                        )
+                    )
+                    .filter(f -> f
+                        .term(t -> t
+                            .field("log.message.status")
+                            .value("REQUEST")
+                        )
+                    )
+                )
+            )
+            .aggregations("aggs", agg -> agg
+                .aggregations("KEY_COUNT", keyCountAgg -> keyCountAgg
+                    .terms(t -> t
+                        .field("log.message.key")
+                        .size(1000)
+                    )
+                    .aggregations("service_group", serviceAgg -> serviceAgg
+                        .terms(ts -> ts
+                            .script(script -> script
+                                .inline(inline -> inline
+                                    .source(
+                                        "String keyword = doc['log.message.service.keyword'].value; " +
+                                        "if (keyword.startsWith(\"MAP\")) { return 'MAP'; } " +
+                                        "else if (keyword.startsWith(\"PLACE\")) { return 'PLACE'; } " +
+                                        "else if (keyword.startsWith(\"ISOCHRONE\")) { return 'ISOCHRONE'; } " +
+                                        "else if (keyword.startsWith(\"MATRIX\")) { return 'MATRIX'; } " +
+                                        "else if (keyword.startsWith(\"GEOCODING\")) { return 'GEOCODING'; } " +
+                                        "else if (keyword.startsWith(\"PEDESTRIAN\") || keyword.startsWith(\"OPTIMIZATION\") || " +
+                                        "keyword.startsWith(\"ROUTE\") || keyword.startsWith(\"TRANSIT\") || " +
+                                        "keyword.startsWith(\"MULTISTOP\") || keyword.startsWith(\"MULTISTOP_2000\") || " +
+                                        "keyword.startsWith(\"VIRTUALIZATION\")) { return 'DIRECTION'; } " +
+                                        "else { return 'ETC'; }"
+                                    )
+                                    .lang("painless")
+                                )
+                            )
+                            .size(10000000)
+                        )
+                    )
+                )
+            )
+        );
+    }
+
+    // 사용 예제
+    public void executeSearch(ElasticsearchClient client) throws Exception {
+        SearchRequest searchRequest = buildSearchRequest();
+
+        SearchResponse<Void> response = client.search(searchRequest, Void.class);
+
+        // 결과 처리
+        System.out.println("Total hits: " + response.hits().total().value());
+
+        // Aggregation 결과 가져오기
+        var keyCountBuckets = response.aggregations()
+            .get("aggs")
+            .sterms()  // String terms aggregation
+            .buckets()
+            .array();
+
+        for (var bucket : keyCountBuckets) {
+            System.out.println("Key: " + bucket.key() + ", Doc count: " + bucket.docCount());
+
+            var serviceGroupBuckets = bucket.aggregations()
+                .get("service_group")
+                .sterms()
+                .buckets()
+                .array();
+
+            for (var serviceBucket : serviceGroupBuckets) {
+                System.out.println("  Service: " + serviceBucket.key() +
+                                   ", Count: " + serviceBucket.docCount());
+            }
+        }
+    }
+}
