@@ -37,3 +37,77 @@ A key
 B key  
   - map: 890건 (Map*, load* 모두 합쳐진 수)
   - another_service: 345건
+
+
+
+
+
+  GET /my-index/_search
+  {
+    "track_total_hits": true,
+    "size": 0,
+    "query": {
+      "bool": {
+        "must": [
+          {
+            "match": {
+              "message": "error"  // 텍스트 검색
+            }
+          }
+        ],
+        "filter": [
+          {
+            "range": {
+              "@timestamp": {
+                "gte": "2024-11-14T00:00:00.000+09:00",
+                "lte": "2024-11-14T23:59:59.999+09:00"
+              }
+            }
+          },
+          {
+            "term": {
+              "environment": "production"  // 정확한 값 매칭
+            }
+          },
+          {
+            "terms": {
+              "region": ["asia", "europe"]  // 여러 값 중 하나
+            }
+          },
+          {
+            "exists": {
+              "field": "user_id"  // 필드 존재 여부
+            }
+          }
+        ],
+        "must_not": [
+          {
+            "term": {
+              "is_test": true  // 제외할 조건
+            }
+          }
+        ],
+        "should": [
+          {
+            "term": {
+              "priority": "high"  // OR 조건 (최소 1개 이상 매칭)
+            }
+          },
+          {
+            "term": {
+              "priority": "critical"
+            }
+          }
+        ],
+        "minimum_should_match": 1  // should 중 최소 1개는 매칭되어야 함
+      }
+    },
+    "aggs": {
+      "by_B_service": {
+        "terms": {
+          "field": "B",
+          "size": 10000
+        }
+      }
+    }
+  }
