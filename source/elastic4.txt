@@ -35,3 +35,25 @@ public SearchRequest buildSearchRequestConcise() {
         )
     );
 }
+
+
+
+
+.aggregations("KEY_COUNT", a -> a
+            .terms(t -> t
+                .field("log.message.key")
+                .size(1000)
+            )
+            .aggregations("service_group", sa -> sa
+                .terms(ts -> ts
+                    .script(sc -> sc
+                        .inline(i -> i
+                            .source(scriptSource)
+                            .lang("painless")
+                        )
+                    )
+                    .size(10000000)
+                )
+            )
+        )
+        .build();
