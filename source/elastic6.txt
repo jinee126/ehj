@@ -1,65 +1,88 @@
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 
 public class ElasticsearchToExcel {
-    
+
+    private static final String EXCEL_DIR = "exceldir";
+
     public static void main(String[] args) throws Exception {
         // 예시 데이터
         Map<String, Map<String, Long>> data = new LinkedHashMap<>();
-        
+
         Map<String, Long> key1 = new LinkedHashMap<>();
         key1.put("a", 10L);
         key1.put("b", 20L);
         key1.put("c", 30L);
         data.put("key1", key1);
-        
+
         Map<String, Long> key2 = new LinkedHashMap<>();
         key2.put("a", 0L);
         key2.put("b", 2L);
         key2.put("c", 10L);
         data.put("key2", key2);
-        
+
         // 엑셀 생성
-        createExcel(data, "output.xlsx");
+        createExcel(data, "service_summary.xlsx");
     }
-    
-    public static void createExcel(Map<String, Map<String, Long>> data, String filePath) throws Exception {
+
+    /**
+     * 디렉토리가 없으면 생성
+     */
+    private static void ensureDirectoryExists(String dirPath) throws IOException {
+        Path path = Paths.get(dirPath);
+        if (!Files.exists(path)) {
+            Files.createDirectories(path);
+            System.out.println("디렉토리 생성: " + path.toAbsolutePath());
+        }
+    }
+
+    /**
+     * 엑셀 파일 생성
+     * @param data 집계 데이터
+     * @param fileName 파일명 (확장자 포함)
+     */
+    public static void createExcel(Map<String, Map<String, Long>> data, String fileName) throws Exception {
+        // 디렉토리 생성
+        ensureDirectoryExists(EXCEL_DIR);
+
+        // 전체 파일 경로
+        String filePath = EXCEL_DIR + File.separator + fileName;
+
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("서비스 집계");
-        
+
         // 스타일 설정
-        CellStyle headerStyle = workbook.createCellStyle();
-        Font headerFont = workbook.createFont();
-        headerFont.setBold(true);
-        headerStyle.setFont(headerFont);
-        headerStyle.setAlignment(HorizontalAlignment.CENTER);
-        headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        
+        CellStyle headerStyle = createHeaderStyle(workbook);
+
         // 서비스 목록 추출 (a, b, c)
         Set<String> services = new LinkedHashSet<>();
         for (Map<String, Long> serviceMap : data.values()) {
             services.addAll(serviceMap.keySet());
         }
         List<String> serviceList = new ArrayList<>(services);
-        
+
         // 헤더 행 생성
         Row headerRow = sheet.createRow(0);
-        
+
         // "key" 셀
         Cell keyCell = headerRow.createCell(0);
         keyCell.setCellValue("key");
         keyCell.setCellStyle(headerStyle);
-        
+
         // "어제" 병합 헤더
         int col = 1;
         Cell yesterdayCell = headerRow.createCell(col);
         yesterdayCell.setCellValue("어제");
         yesterdayCell.setCellStyle(headerStyle);
-        
+
         // 어제 서비스별 헤더 (a, b, c)
         for (int i = 0; i < serviceList.size(); i++) {
             Cell cell = headerRow.createCell(col + i);
@@ -67,28 +90,28 @@ public class ElasticsearchToExcel {
             cell.setCellStyle(headerStyle);
         }
         col += serviceList.size();
-        
+
         // "2일전" 병합 헤더
         Cell twoDaysAgoCell = headerRow.createCell(col);
         twoDaysAgoCell.setCellValue("2일전");
         twoDaysAgoCell.setCellStyle(headerStyle);
-        
+
         // 2일전 서비스별 헤더 (a, b, c)
         for (int i = 0; i < serviceList.size(); i++) {
             Cell cell = headerRow.createCell(col + i);
             cell.setCellValue(serviceList.get(i));
             cell.setCellStyle(headerStyle);
         }
-        
+
         // 데이터 행 생성
         int rowNum = 1;
         for (Map.Entry<String, Map<String, Long>> entry : data.entrySet()) {
             Row row = sheet.createRow(rowNum++);
-            
+
             // key 컬럼
             row.createCell(0).setCellValue(entry.getKey());
-            
-            // 어제 데이터 (실제로는 현재 데이터)
+
+            // 어제 데이터
             Map<String, Long> serviceData = entry.getValue();
             col = 1;
             for (String service : serviceList) {
@@ -96,27 +119,98 @@ public class ElasticsearchToExcel {
                 Cell cell = row.createCell(col++);
                 cell.setCellValue(count);
             }
-            
+
             // 2일전 데이터 (예시로 비워둠)
             for (String service : serviceList) {
                 Cell cell = row.createCell(col++);
                 cell.setCellValue(""); // 또는 다른 데이터 소스에서 가져오기
             }
         }
-        
+
         // 컬럼 너비 자동 조정
         for (int i = 0; i < headerRow.getLastCellNum(); i++) {
             sheet.autoSizeColumn(i);
         }
-        
+
         // 파일 저장
         try (FileOutputStream fileOut = new FileOutputStream(filePath)) {
             workbook.write(fileOut);
         }
-        
+
         workbook.close();
-        System.out.println("Excel 파일이 생성되었습니다: " + filePath);
+        System.out.println("Excel 파일이 생성되었습니다: " + new File(filePath).getAbsolutePath());
+    }
+
+    /**
+     * 헤더 스타일 생성
+     */
+    private static CellStyle createHeaderStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        style.setFont(font);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        return style;
+    }
+
+    /**
+     * 간단한 버전 (날짜 구분 없이)
+     */
+    public static void createSimpleExcel(Map<String, Map<String, Long>> data, String fileName) throws Exception {
+        // 디렉토리 생성
+        ensureDirectoryExists(EXCEL_DIR);
+
+        // 전체 파일 경로
+        String filePath = EXCEL_DIR + File.separator + fileName;
+
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("서비스 집계");
+
+        // 헤더 스타일
+        CellStyle headerStyle = createHeaderStyle(workbook);
+
+        // 서비스 목록
+        Set<String> services = new LinkedHashSet<>();
+        data.values().forEach(map -> services.addAll(map.keySet()));
+        List<String> serviceList = new ArrayList<>(services);
+
+        // 헤더
+        Row headerRow = sheet.createRow(0);
+        Cell keyHeaderCell = headerRow.createCell(0);
+        keyHeaderCell.setCellValue("key");
+        keyHeaderCell.setCellStyle(headerStyle);
+
+        for (int i = 0; i < serviceList.size(); i++) {
+            Cell cell = headerRow.createCell(i + 1);
+            cell.setCellValue(serviceList.get(i));
+            cell.setCellStyle(headerStyle);
+        }
+
+        // 데이터
+        int rowNum = 1;
+        for (Map.Entry<String, Map<String, Long>> entry : data.entrySet()) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(entry.getKey());
+
+            for (int i = 0; i < serviceList.size(); i++) {
+                String service = serviceList.get(i);
+                Long count = entry.getValue().getOrDefault(service, 0L);
+                row.createCell(i + 1).setCellValue(count);
+            }
+        }
+
+        // 컬럼 너비 조정
+        for (int i = 0; i <= serviceList.size(); i++) {
+            sheet.autoSizeColumn(i);
+        }
+
+        try (FileOutputStream fileOut = new FileOutputStream(filePath)) {
+            workbook.write(fileOut);
+        }
+        workbook.close();
+
+        System.out.println("Excel 파일이 생성되었습니다: " + new File(filePath).getAbsolutePath());
     }
 }
-
-implementation 'org.apache.poi:poi-ooxml:5.2.3'
