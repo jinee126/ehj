@@ -1,0 +1,13 @@
+.aggregations("svc_c", a -> a
+    .filter(f -> f
+        .wildcard(w -> w
+            .field("log.message.url")
+            .value("*c*")
+        )
+    )
+    .aggregations("unique_c", sub -> sub
+        .cardinality(c -> c
+            .field("log.message.url.keyword")
+        )
+    )
+)
