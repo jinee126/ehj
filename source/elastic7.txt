@@ -11,10 +11,20 @@ public class DataMergeExample {
         Long b;
         Long c;
 
-        public RowData(String key, String company, String serviceName) {
+        public RowData(String key, String company, String serviceName, Long a, Long b, Long c) {
             this.key = key;
             this.company = company;
             this.serviceName = serviceName;
+            this.a = a != null ? a : 0L;
+            this.b = b != null ? b : 0L;
+            this.c = c != null ? c : 0L;
+        }
+
+        // 복사 생성자 (값만 0으로 초기화)
+        public RowData(RowData other) {
+            this.key = other.key;
+            this.company = other.company;
+            this.serviceName = other.serviceName;
             this.a = 0L;
             this.b = 0L;
             this.c = 0L;
@@ -27,97 +37,79 @@ public class DataMergeExample {
         }
     }
 
-    // 원본 데이터 형식
-    static class SourceData {
-        String key;
-        Map<String, Object> data;
-
-        public SourceData(String key, Map<String, Object> data) {
-            this.key = key;
-            this.data = data;
-        }
-    }
-
     public static void main(String[] args) {
-        // xData 원본
-        List<SourceData> xData = Arrays.asList(
-            new SourceData("1번키", Map.of("a", 10L, "b", 10L, "c", 10L, "com", "a회사", "serviceName", "a회사서비스")),
-            new SourceData("2번키", Map.of("a", 10L, "b", 10L, "c", 10L, "com", "b회사", "serviceName", "b회사서비스"))
+        // 원본 데이터 - 이미 List<RowData> 형식
+        List<RowData> xData = Arrays.asList(
+            new RowData("1번키", "a회사", "a회사서비스", 10L, 10L, 10L),
+            new RowData("2번키", "b회사", "b회사서비스", 10L, 10L, 10L)
         );
 
-        // yData 원본
-        List<SourceData> yData = Arrays.asList(
-            new SourceData("2번키", Map.of("b", 20L, "c", 10L, "com", "b회사", "serviceName", "b회사서비스")),
-            new SourceData("3번키", Map.of("b", 10L, "com", "c회사", "serviceName", "c회사서비스"))
+        List<RowData> yData = Arrays.asList(
+            new RowData("2번키", "b회사", "b회사서비스", null, 20L, 10L),
+            new RowData("3번키", "c회사", "c회사서비스", null, 10L, null)
         );
 
-        // zData 원본
-        List<SourceData> zData = Arrays.asList(
-            new SourceData("3번키", Map.of("c", 10L, "com", "c회사", "serviceName", "c회사서비스"))
+        List<RowData> zData = Arrays.asList(
+            new RowData("3번키", "c회사", "c회사서비스", null, null, 10L)
         );
 
-        // 키별 기본 정보 수집 (key, company, serviceName은 1:1:1 관계)
-        Map<String, RowData> baseInfoMap = new LinkedHashMap<>();
-        collectBaseInfo(xData, baseInfoMap);
-        collectBaseInfo(yData, baseInfoMap);
-        collectBaseInfo(zData, baseInfoMap);
+        // 모든 키 수집 (순서 유지)
+        Map<String, RowData> allKeysMap = new LinkedHashMap<>();
+        collectKeys(xData, allKeysMap);
+        collectKeys(yData, allKeysMap);
+        collectKeys(zData, allKeysMap);
 
-        // 최종 결과 리스트
-        List<RowData> xDataList = new ArrayList<>();
-        List<RowData> yDataList = new ArrayList<>();
-        List<RowData> zDataList = new ArrayList<>();
-
-        // 각 데이터셋별로 분리하고 값 채우기
-        for (RowData baseInfo : baseInfoMap.values()) {
-            RowData xRow = new RowData(baseInfo.key, baseInfo.company, baseInfo.serviceName);
-            RowData yRow = new RowData(baseInfo.key, baseInfo.company, baseInfo.serviceName);
-            RowData zRow = new RowData(baseInfo.key, baseInfo.company, baseInfo.serviceName);
-
-            // 원본 데이터에서 값 채우기
-            fillFromSource(xData, xRow);
-            fillFromSource(yData, yRow);
-            fillFromSource(zData, zRow);
-
-            xDataList.add(xRow);
-            yDataList.add(yRow);
-            zDataList.add(zRow);
-        }
+        // 각 데이터셋을 전체 키 기준으로 재구성
+        List<RowData> xDataFull = fillMissingRows(allKeysMap, xData);
+        List<RowData> yDataFull = fillMissingRows(allKeysMap, yData);
+        List<RowData> zDataFull = fillMissingRows(allKeysMap, zData);
 
         // 결과 출력
         System.out.println("=== xData ===");
-        xDataList.forEach(System.out::println);
+        xDataFull.forEach(System.out::println);
 
         System.out.println("\n=== yData ===");
-        yDataList.forEach(System.out::println);
+        yDataFull.forEach(System.out::println);
 
         System.out.println("\n=== zData ===");
-        zDataList.forEach(System.out::println);
+        zDataFull.forEach(System.out::println);
 
         // 엑셀 형식으로 출력
         System.out.println("\n=== Excel 형식 ===");
-        printExcelFormat(xDataList, yDataList, zDataList);
+        printExcelFormat(xDataFull, yDataFull, zDataFull);
     }
 
-    private static void collectBaseInfo(List<SourceData> sourceList,
-                                        Map<String, RowData> baseInfoMap) {
-        for (SourceData source : sourceList) {
-            if (!baseInfoMap.containsKey(source.key)) {
-                String company = (String) source.data.get("com");
-                String serviceName = (String) source.data.get("serviceName");
-                baseInfoMap.put(source.key, new RowData(source.key, company, serviceName));
+    // 모든 키의 기본 정보 수집 (key, company, serviceName)
+    private static void collectKeys(List<RowData> dataList, Map<String, RowData> allKeysMap) {
+        for (RowData row : dataList) {
+            if (!allKeysMap.containsKey(row.key)) {
+                allKeysMap.put(row.key, row);
             }
         }
     }
 
-    private static void fillFromSource(List<SourceData> sourceList, RowData row) {
-        for (SourceData source : sourceList) {
-            if (source.key.equals(row.key)) {
-                row.a = (Long) source.data.getOrDefault("a", 0L);
-                row.b = (Long) source.data.getOrDefault("b", 0L);
-                row.c = (Long) source.data.getOrDefault("c", 0L);
-                break;
+    // 누락된 키는 0으로 채워서 전체 리스트 생성
+    private static List<RowData> fillMissingRows(Map<String, RowData> allKeysMap,
+                                                  List<RowData> sourceData) {
+        List<RowData> result = new ArrayList<>();
+
+        for (String key : allKeysMap.keySet()) {
+            RowData found = sourceData.stream()
+                                      .filter(r -> r.key.equals(key))
+                                      .findFirst()
+                                      .orElse(null);
+
+            if (found != null) {
+                result.add(found);
+            } else {
+                // 해당 키가 없으면 기본 정보만 가져오고 값은 0으로
+                RowData baseInfo = allKeysMap.get(key);
+                result.add(new RowData(baseInfo.key, baseInfo.company, baseInfo.serviceName,
+                                      0L, 0L, 0L));
             }
         }
+
+        return result;
     }
 
     private static void printExcelFormat(List<RowData> xData,
@@ -126,65 +118,19 @@ public class DataMergeExample {
         System.out.println("\t\t\txData\t\t\t\tyData\t\t\t\tzData");
         System.out.println("\t회사\t서비스명\ta\tb\tc\ta\tb\tc\ta\tb\tc");
 
-        Set<String> allKeys = new LinkedHashSet<>();
-        xData.forEach(r -> allKeys.add(r.key));
-        yData.forEach(r -> allKeys.add(r.key));
-        zData.forEach(r -> allKeys.add(r.key));
-
-        for (String key : allKeys) {
-            RowData x = findByKey(xData, key);
-            RowData y = findByKey(yData, key);
-            RowData z = findByKey(zData, key);
-
-            // key, company, serviceName은 1:1:1이므로 하나만 참조
-            RowData baseInfo = x != null ? x : (y != null ? y : z);
+        for (int i = 0; i < xData.size(); i++) {
+            RowData x = xData.get(i);
+            RowData y = yData.get(i);
+            RowData z = zData.get(i);
 
             System.out.printf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
-                key,
-                baseInfo.company,
-                baseInfo.serviceName,
-                x != null ? x.a : 0,
-                x != null ? x.b : 0,
-                x != null ? x.c : 0,
-                y != null ? y.a : 0,
-                y != null ? y.b : 0,
-                y != null ? y.c : 0,
-                z != null ? z.a : 0,
-                z != null ? z.b : 0,
-                z != null ? z.c : 0
+                x.key,
+                x.company,
+                x.serviceName,
+                x.a, x.b, x.c,
+                y.a, y.b, y.c,
+                z.a, z.b, z.c
             );
         }
     }
-
-    private static RowData findByKey(List<RowData> list, String key) {
-        return list.stream()
-                   .filter(r -> r.key.equals(key))
-                   .findFirst()
-                   .orElse(null);
-    }
 }
-```
-
-**출력 결과:**
-```
-=== xData ===
-1번키	a회사	a회사서비스	a:10	b:10	c:10
-2번키	b회사	b회사서비스	a:10	b:10	c:10
-3번키	c회사	c회사서비스	a:0	b:0	c:0
-
-=== yData ===
-1번키	a회사	a회사서비스	a:0	b:0	c:0
-2번키	b회사	b회사서비스	a:0	b:20	c:10
-3번키	c회사	c회사서비스	a:0	b:10	c:0
-
-=== zData ===
-1번키	a회사	a회사서비스	a:0	b:0	c:0
-2번키	b회사	b회사서비스	a:0	b:0	c:0
-3번키	c회사	c회사서비스	a:0	b:0	c:10
-
-=== Excel 형식 ===
-			xData				yData				zData
-	회사	서비스명	a	b	c	a	b	c	a	b	c
-1번키	a회사	a회사서비스	10	10	10	0	0	0	0	0	0
-2번키	b회사	b회사서비스	10	10	10	0	20	10	0	0	0
-3번키	c회사	c회사서비스	0	0	0	0	10	0	0	0	10
