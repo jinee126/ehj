@@ -133,4 +133,11 @@ public class DataMergeExample {
             );
         }
     }
+
+    private static RowData findByKey(List<RowData> list, String key) {
+        return list.stream()
+                   .filter(r -> r.key.equals(key))
+                   .findFirst()
+                   .orElse(null);  // 이 경우는 발생하지 않아야 함 (fillMissingRows로 모든 키가 있음)
+    }
 }
