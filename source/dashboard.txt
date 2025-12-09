@@ -1,18 +1,62 @@
-app/
-  dashboard/
-    page.tsx
-    components/
-      ASection.tsx         // 서버 컴포넌트 (SSR fetch)
-      BSection.tsx         // 클라이언트 컴포넌트 (차트/인터랙션)
-      CSection.tsx         // 서버 컴포넌트 (캐시/태그)
-      DSection.tsx         // 서버 컴포넌트 (병렬로딩 예시)
-      SectionCard.tsx      // 공통 UI 래퍼
-    loading.tsx            // 전체 페이지 로딩(선택)
-    error.tsx              // 전체 페이지 에러(선택)
-lib/
-  data.ts                  // 서버 fetch 헬퍼
+'use client';
 
+import { useEffect, useState } from 'react';
 
+export default function KeyTotal() {
+  const [findInfo, setFindInfo] = useState<MonthlyCount | undefined>();
+  const [monthlyCountListData, setMonthlyCountListData] = useState<MonthlyCount[]>([]);
 
+  useEffect(() => {
+    const fetchData = async () => {
+      const reqParams = {};
+      const resultData = await callGetAPI(
+        BASE_URL + '/management/key/monthly/count', 
+        HTTP_METHOD.GET, 
+        reqParams, 
+        {}
+      );
+      
+      if (resultData.resultCode === ResultCode.ET00) {
+        if (resultData.resCode === ServerResCode.OK) {
+          let tempData = resultData as ListData<MonthlyCount>;
+          
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth() + 1;
+          
+          const found = tempData.data.find(
+            item => item.year === currentYear && item.month === currentMonth
+          );
+          
+          setFindInfo(found);
+          setMonthlyCountListData(tempData.data);
+        }
+      }
+    };
+    
+    fetchData();
+  }, []); // 빈 배열 = 컴포넌트 마운트 시 1회만 실행
 
-
+  return (
+    <div className="bg-white rounded-lg p-4 sm:p-6 xl:p-8">
+      <div className="flex items-center space-x-1">
+        <Image src="/static/images/user_box_fill.svg" alt="" width={34} height={34} />
+        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-400">
+          {findInfo == null ? 0 : findInfo.count.toString()}
+        </h3>
+      </div>
+      
+      <div><br/><br/></div>
+      
+      <div className="w-full">
+        {monthlyCountListData && (
+          <LineChart 
+            title="key total" 
+            data={monthlyCountListData} 
+            height={380} 
+          />
+        )}
+      </div>
+    </div>
+  );
+}
