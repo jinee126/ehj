@@ -1,0 +1,13 @@
+// src/app/(page)/product/detailPage/[id]/page.tsx
+
+import ADetail from './ADetail';
+
+export default async function DetailPage({
+  params
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params;
+
+  return <ADetail productId={id} />;
+}
