@@ -5,11 +5,11 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   commonCodesAtom,
   commonCodesLoadingAtom,
-  CommonCode
+  CommonCode,
+  CommonCodeRaw
 } from '@/atoms/commonCodeAtom';
 import { useEffect } from 'react';
 
-// AppProvider
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [codes, setCodes] = useAtom(commonCodesAtom);
   const setLoading = useSetAtom(commonCodesLoadingAtom);
@@ -23,10 +23,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.log('[공통코드] 전체 로드 시작');
 
         const response = await fetch('/api/common-codes/all');
-        const data = await response.json();
+        const result = await response.json();
 
-        setCodes(data);
-        console.log('[공통코드] 로드 완료:', data);
+        // 백엔드 응답: { total: 16, data: [...] }
+        const rawCodes: CommonCodeRaw[] = result.data;
+
+        // categorization_code별로 그룹핑
+        const grouped: Record<string, CommonCode[]> = {};
+
+        rawCodes.forEach(item => {
+          const key = item.categorization_code; // "MENU", "AUTH", "USEYN" 등
+
+          if (!grouped[key]) {
+            grouped[key] = [];
+          }
+
+          grouped[key].push({
+            code: item.code,
+            code_value: item.code_value
+          });
+        });
+
+        console.log('[공통코드] 그룹핑 결과:', grouped);
+        /*
+        {
+          MENU: [
+            { code: 'USER', code_value: '사용자' },
+            { code: 'OPERATOR', code_value: '운영자' },
+            { code: 'MANAGER', code_value: '관리자' }
+          ],
+          AUTH: [...],
+          USEYN: [...]
+        }
+        */
+
+        setCodes(grouped);
+        console.log('[공통코드] 로드 완료');
       } catch (error) {
         console.error('[공통코드] 로드 실패:', error);
       } finally {
@@ -40,12 +72,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// useCommonCode - 같은 파일에!
-export function useCommonCode(type: string): CommonCode[] {
+// 조회용 훅
+export function useCommonCode(categorizationCode: string): CommonCode[] {
   const codes = useAtomValue(commonCodesAtom);
-  return codes[type] || [];
+  return codes[categorizationCode] || [];
 }
 
 export function useCommonCodeLoading(): boolean {
   return useAtomValue(commonCodesLoadingAtom);
+}
+
+// 관리 페이지용: 전체 새로고침
+export function useRefreshCommonCodes() {
+  const setCodes = useSetAtom(commonCodesAtom);
+  const setLoading = useSetAtom(commonCodesLoadingAtom);
+
+  return async () => {
+    try {
+      setLoading(true);
+      console.log('[공통코드] 강제 새로고침');
+
+      const response = await fetch('/api/common-codes/all');
+      const result = await response.json();
+      const rawCodes: CommonCodeRaw[] = result.data;
+
+      // 다시 그룹핑
+      const grouped: Record<string, CommonCode[]> = {};
+      rawCodes.forEach(item => {
+        const key = item.categorization_code;
+        if (!grouped[key]) {
+          grouped[key] = [];
+        }
+        grouped[key].push({
+          code: item.code,
+          code_value: item.code_value
+        });
+      });
+
+      setCodes(grouped);
+      console.log('[공통코드] 새로고침 완료');
+    } catch (error) {
+      console.error('[공통코드] 새로고침 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 }
