@@ -1,22 +1,36 @@
-typescript// providers/AppProvider.tsx
+// providers/AppProvider.tsx
 'use client';
 
-import { useSetAtom } from 'jotai';
-import { loadCommonCodeFamily } from '@/atoms/commonCodeAtom';
+import { useAtom, useSetAtom } from 'jotai';
+import { commonCodesAtom, commonCodesLoadingAtom } from '@/atoms/commonCodeAtom';
 import { useEffect } from 'react';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  // 자주 쓰는 공통코드들을 미리 로드
-  const loadUseYn = useSetAtom(loadCommonCodeFamily('USE_YN'));
-  const loadAuthType = useSetAtom(loadCommonCodeFamily('AUTH_TYPE'));
-  const loadStatus = useSetAtom(loadCommonCodeFamily('STATUS'));
+  const [codes, setCodes] = useAtom(commonCodesAtom);
+  const setLoading = useSetAtom(commonCodesLoadingAtom);
 
   useEffect(() => {
-    // 앱 시작할 때 필수 공통코드들 미리 로드
-    loadUseYn();
-    loadAuthType();
-    loadStatus();
-    // ... 다른 자주 쓰는 코드들
+    async function loadAllCommonCodes() {
+      if (Object.keys(codes).length > 0) return;
+
+      try {
+        setLoading(true);
+        console.log('[공통코드] 전체 로드 시작');
+
+        const response = await fetch('/api/common-codes/all');
+        const data = await response.json();
+
+        // data는 { USE_YN: [...], AUTH_TYPE: [...], ... } 형태
+        setCodes(data);
+        console.log('[공통코드] 로드 완료:', data);
+      } catch (error) {
+        console.error('[공통코드] 로드 실패:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadAllCommonCodes();
   }, []);
 
   return <>{children}</>;
