@@ -1,10 +1,15 @@
 // providers/AppProvider.tsx
 'use client';
 
-import { useAtom, useSetAtom } from 'jotai';
-import { commonCodesAtom, commonCodesLoadingAtom } from '@/atoms/commonCodeAtom';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import {
+  commonCodesAtom,
+  commonCodesLoadingAtom,
+  CommonCode
+} from '@/atoms/commonCodeAtom';
 import { useEffect } from 'react';
 
+// AppProvider
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [codes, setCodes] = useAtom(commonCodesAtom);
   const setLoading = useSetAtom(commonCodesLoadingAtom);
@@ -20,7 +25,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const response = await fetch('/api/common-codes/all');
         const data = await response.json();
 
-        // data는 { USE_YN: [...], AUTH_TYPE: [...], ... } 형태
         setCodes(data);
         console.log('[공통코드] 로드 완료:', data);
       } catch (error) {
@@ -34,4 +38,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return <>{children}</>;
+}
+
+// useCommonCode - 같은 파일에!
+export function useCommonCode(type: string): CommonCode[] {
+  const codes = useAtomValue(commonCodesAtom);
+  return codes[type] || [];
+}
+
+export function useCommonCodeLoading(): boolean {
+  return useAtomValue(commonCodesLoadingAtom);
 }
