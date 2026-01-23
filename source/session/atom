@@ -1,0 +1,89 @@
+// atoms/authAtoms.ts
+import { atom } from 'jotai';
+
+// 1. 사용자 정보 타입 (서버에서 받아온 데이터)
+export interface UserSession {
+  userId: string;
+  email: string;
+  role: string;
+  menuAccess: string[];
+  buttonActions: string[];
+  // 서버에서 검증 후 내려주는 기타 정보
+}
+
+// 2. 사용자 세션 atom (일반 atom)
+export const userSessionAtom = atom<UserSession | null>(null);
+
+// 3. 로딩 상태 atom
+export const sessionLoadingAtom = atom<boolean>(false);
+
+// 4. 세션 로드 액션 atom
+export const loadSessionAtom = atom(
+  null,
+  async (get, set) => {
+    set(sessionLoadingAtom, true);
+
+    try {
+      // Cognito에서 idToken 가져오기
+      const { fetchAuthSession } = await import('aws-amplify/auth');
+      const session = await fetchAuthSession();
+      const idToken = session.tokens?.idToken?.toString();
+
+      if (!idToken) {
+        throw new Error('토큰이 없습니다');
+      }
+
+      // 서버 API 호출 (토큰 검증 + 사용자 정보 조회)
+      const response = await fetch('/api/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('세션 로드 실패');
+      }
+
+      const userData: UserSession = await response.json();
+
+      // atom에 저장
+      set(userSessionAtom, userData);
+      return userData;
+
+    } catch (error) {
+      console.error('세션 로드 에러:', error);
+      set(userSessionAtom, null);
+      throw error;
+    } finally {
+      set(sessionLoadingAtom, false);
+    }
+  }
+);
+
+// 5. 권한 체크 파생 atom들
+export const canAccessMenuAtom = atom((get) => (menuId: string) => {
+  const session = get(userSessionAtom);
+  return session?.menuAccess.includes(menuId) ?? false;
+});
+
+export const canPerformActionAtom = atom((get) => (action: string) => {
+  const session = get(userSessionAtom);
+  return session?.buttonActions.includes(action) ?? false;
+});
+
+export const hasRoleAtom = atom((get) => (requiredRole: string) => {
+  const session = get(userSessionAtom);
+  return session?.role === requiredRole;
+});
+
+// 6. 로그아웃 atom
+export const logoutAtom = atom(
+  null,
+  async (get, set) => {
+    const { signOut } = await import('aws-amplify/auth');
+    await signOut();
+    set(userSessionAtom, null);
+  }
+);
