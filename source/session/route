@@ -1,0 +1,47 @@
+// app/api/session/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyToken } from '@/lib/auth/verify';
+
+export async function POST(request: NextRequest) {
+  try {
+    // Bearer 토큰 추출
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: '인증 토큰이 없습니다' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.substring(7);
+
+    // 토큰 검증 (verify.ts)
+    const verifiedUser = await verifyToken(token);
+
+    if (!verifiedUser) {
+      return NextResponse.json(
+        { error: '유효하지 않은 토큰입니다' },
+        { status: 401 }
+      );
+    }
+
+    // DB에서 추가 권한 정보 조회하거나
+    // 토큰의 custom claims에서 권한 정보 추출
+    const userSession = {
+      userId: verifiedUser.sub,
+      email: verifiedUser.email,
+      role: verifiedUser['custom:role'] || 'user',
+      menuAccess: JSON.parse(verifiedUser['custom:menuAccess'] || '[]'),
+      buttonActions: JSON.parse(verifiedUser['custom:buttonActions'] || '[]'),
+    };
+
+    return NextResponse.json(userSession);
+
+  } catch (error) {
+    console.error('세션 검증 에러:', error);
+    return NextResponse.json(
+      { error: '세션 처리 중 오류가 발생했습니다' },
+      { status: 500 }
+    );
+  }
+}
