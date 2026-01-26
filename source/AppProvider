@@ -1,120 +1,44 @@
-// providers/AppProvider.tsx
+// components/providers/AppProvider.tsx
 'use client';
 
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import {
-  commonCodesAtom,
-  commonCodesLoadingAtom,
-  CommonCode,
-  CommonCodeRaw
-} from '@/atoms/commonCodeAtom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useSetAtom } from 'jotai';
+import { loadSessionAtom } from '@/atoms/authAtoms';
+import { loadCommonCodesAtom } from '@/atoms/commonCodeAtoms';
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [codes, setCodes] = useAtom(commonCodesAtom);
-  const setLoading = useSetAtom(commonCodesLoadingAtom);
+export default function AppProvider({ children }: { children: React.ReactNode }) {
+  const [isInitialized, setIsInitialized] = useState(false);
+  const loadSession = useSetAtom(loadSessionAtom);
+  const loadCommonCodes = useSetAtom(loadCommonCodesAtom);
 
   useEffect(() => {
-    async function loadAllCommonCodes() {
-      if (Object.keys(codes).length > 0) return;
-
+    const initializeApp = async () => {
       try {
-        setLoading(true);
-        console.log('[공통코드] 전체 로드 시작');
-
-        const response = await fetch('/api/common-codes/all');
-        const result = await response.json();
-
-        // 백엔드 응답: { total: 16, data: [...] }
-        const rawCodes: CommonCodeRaw[] = result.data;
-
-        // categorization_code별로 그룹핑
-        const grouped: Record<string, CommonCode[]> = {};
-
-        rawCodes.forEach(item => {
-          const key = item.categorization_code; // "MENU", "AUTH", "USEYN" 등
-
-          if (!grouped[key]) {
-            grouped[key] = [];
-          }
-
-          grouped[key].push({
-            code: item.code,
-            code_value: item.code_value
-          });
-        });
-
-        console.log('[공통코드] 그룹핑 결과:', grouped);
-        /*
-        {
-          MENU: [
-            { code: 'USER', code_value: '사용자' },
-            { code: 'OPERATOR', code_value: '운영자' },
-            { code: 'MANAGER', code_value: '관리자' }
-          ],
-          AUTH: [...],
-          USEYN: [...]
-        }
-        */
-
-        setCodes(grouped);
-        console.log('[공통코드] 로드 완료');
+        // 공통코드와 세션을 동시에 로드 (병렬 처리)
+        await Promise.allSettled([
+          loadCommonCodes(),
+          loadSession().catch(() => {
+            // 세션 로드 실패는 무시 (로그인 안한 상태)
+            console.log('세션 없음');
+          })
+        ]);
       } catch (error) {
-        console.error('[공통코드] 로드 실패:', error);
+        console.error('초기화 실패:', error);
       } finally {
-        setLoading(false);
+        setIsInitialized(true);
       }
-    }
+    };
 
-    loadAllCommonCodes();
-  }, []);
+    initializeApp();
+  }, [loadSession, loadCommonCodes]);
+
+  if (!isInitialized) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div>로딩 중...</div>
+      </div>
+    );
+  }
 
   return <>{children}</>;
-}
-
-// 조회용 훅
-export function useCommonCode(categorizationCode: string): CommonCode[] {
-  const codes = useAtomValue(commonCodesAtom);
-  return codes[categorizationCode] || [];
-}
-
-export function useCommonCodeLoading(): boolean {
-  return useAtomValue(commonCodesLoadingAtom);
-}
-
-// 관리 페이지용: 전체 새로고침
-export function useRefreshCommonCodes() {
-  const setCodes = useSetAtom(commonCodesAtom);
-  const setLoading = useSetAtom(commonCodesLoadingAtom);
-
-  return async () => {
-    try {
-      setLoading(true);
-      console.log('[공통코드] 강제 새로고침');
-
-      const response = await fetch('/api/common-codes/all');
-      const result = await response.json();
-      const rawCodes: CommonCodeRaw[] = result.data;
-
-      // 다시 그룹핑
-      const grouped: Record<string, CommonCode[]> = {};
-      rawCodes.forEach(item => {
-        const key = item.categorization_code;
-        if (!grouped[key]) {
-          grouped[key] = [];
-        }
-        grouped[key].push({
-          code: item.code,
-          code_value: item.code_value
-        });
-      });
-
-      setCodes(grouped);
-      console.log('[공통코드] 새로고침 완료');
-    } catch (error) {
-      console.error('[공통코드] 새로고침 실패:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 }
