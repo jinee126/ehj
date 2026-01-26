@@ -1,44 +1,62 @@
-// components/providers/AppProvider.tsx
+// providers/AppProvider.tsx
 'use client';
-
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import {
+  commonCodesAtom,
+  commonCodesLoadingAtom,
+  CommonCode,
+  CommonCodeRaw
+} from '@/atoms/commonCodeAtom';
+import {
+  loadSessionAtom,
+  sessionLoadingAtom
+} from '@/atoms/authAtoms';
 import { useEffect, useState } from 'react';
-import { useSetAtom } from 'jotai';
-import { loadSessionAtom } from '@/atoms/authAtoms';
-import { loadCommonCodesAtom } from '@/atoms/commonCodeAtoms';
 
-export default function AppProvider({ children }: { children: React.ReactNode }) {
-  const [isInitialized, setIsInitialized] = useState(false);
+// AppProvider
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [codes, setCodes] = useAtom(commonCodesAtom);
+  const setCodesLoading = useSetAtom(commonCodesLoadingAtom);
   const loadSession = useSetAtom(loadSessionAtom);
-  const loadCommonCodes = useSetAtom(loadCommonCodesAtom);
+  const isSessionLoading = useAtomValue(sessionLoadingAtom);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    const initializeApp = async () => {
+    async function initialize() {
       try {
-        // 공통코드와 세션을 동시에 로드 (병렬 처리)
-        await Promise.allSettled([
-          loadCommonCodes(),
-          loadSession().catch(() => {
-            // 세션 로드 실패는 무시 (로그인 안한 상태)
-            console.log('세션 없음');
-          })
-        ]);
+        // 1. 공통코드 로드
+        await loadAllCommonCodes();
+
+        // 2. 세션 로드 시도 (로그인되어 있으면 복원)
+        try {
+          await loadSession();
+          console.log('[세션] 복원 완료');
+        } catch (error) {
+          console.log('[세션] 로그인 안됨 또는 토큰 만료:', error);
+          // 세션 로드 실패는 무시 (로그인 안한 상태)
+        }
       } catch (error) {
-        console.error('초기화 실패:', error);
+        console.error('[초기화] 실패:', error);
       } finally {
         setIsInitialized(true);
       }
-    };
+    }
 
-    initializeApp();
-  }, [loadSession, loadCommonCodes]);
+    async function loadAllCommonCodes() {
+      if (Object.keys(codes).length > 0) {
+        console.log('[공통코드] 이미 로드됨, 스킵');
+        return;
+      }
 
-  if (!isInitialized) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div>로딩 중...</div>
-      </div>
-    );
-  }
+      try {
+        setCodesLoading(true);
+        console.log('[공통코드] 전체 로드 시작');
 
-  return <>{children}</>;
-}
+        const response = await fetch('/api/common-codes/all');
+        const result = await response.json();
+        const rawCodes: CommonCodeRaw[] = result.data;
+
+        // categorization_code별로 그룹핑
+        const grouped: Record<string, CommonCode[]> = {};
+        rawCodes.forEach(item => {
+          const key = item.categorizat
