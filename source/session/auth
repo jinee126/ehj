@@ -1,0 +1,25 @@
+// providers/AppProvider.tsx 하단에 추가 또는
+// hooks/useAuth.ts 로 분리
+
+import { useAtomValue } from 'jotai';
+import {
+  userSessionAtom,
+  canAccessMenuAtom,
+  canPerformActionAtom,
+  hasRoleAtom
+} from '@/atoms/authAtoms';
+
+export function useAuth() {
+  const session = useAtomValue(userSessionAtom);
+  const canAccessMenu = useAtomValue(canAccessMenuAtom);
+  const canPerformAction = useAtomValue(canPerformActionAtom);
+  const hasRole = useAtomValue(hasRoleAtom);
+
+  return {
+    session,
+    isAuthenticated: !!session,
+    canAccessMenu,
+    canPerformAction,
+    hasRole,
+  };
+}
