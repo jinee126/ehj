@@ -1,43 +1,75 @@
 // providers/AppProvider.tsx
 'use client';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+
+import { useAtom, useSetAtom } from 'jotai';
 import {
   commonCodesAtom,
   commonCodesLoadingAtom,
   CommonCode,
   CommonCodeRaw
 } from '@/atoms/commonCodeAtom';
-import { loadSessionAtom } from '@/atoms/authAtoms';
+import { loadSessionAtom, logoutAtom } from '@/atoms/authAtoms';
 import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [codes, setCodes] = useAtom(commonCodesAtom);
   const setCodesLoading = useSetAtom(commonCodesLoadingAtom);
   const loadSession = useSetAtom(loadSessionAtom);
+  const logout = useSetAtom(logoutAtom);
   const [isInitialized, setIsInitialized] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
+    console.log('[AppProvider] useEffect 실행');
+
     async function initialize() {
-      // 공통코드와 세션을 동시에 로드 (병렬 처리로 더 빠름)
-      const results = await Promise.allSettled([
-        loadAllCommonCodes(),
-        loadSession()
-      ]);
+      console.log('[AppProvider] initialize 시작');
 
-      // 결과 확인
-      if (results[0].status === 'fulfilled') {
-        console.log('[공통코드] 로드 성공');
-      } else {
-        console.error('[공통코드] 로드 실패:', results[0].reason);
+      try {
+        // 공통코드와 세션 동시 로드
+        const results = await Promise.allSettled([
+          loadAllCommonCodes(),
+          loadSession()
+        ]);
+
+        // 공통코드 결과
+        if (results[0].status === 'fulfilled') {
+          console.log('[공통코드] 로드 성공');
+        } else {
+          console.error('[공통코드] 로드 실패:', results[0].reason);
+        }
+
+        // 세션 결과
+        if (results[1].status === 'fulfilled') {
+          console.log('[세션] 로드 성공');
+        } else {
+          console.log('[세션] 로드 실패:', results[1].reason);
+
+          // 로그인 페이지가 아닌 경우에만 처리
+          const publicPaths = ['/sign-in', '/sign-up', '/forgot-password'];
+          const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
+
+          if (!isPublicPath) {
+            // 보호된 페이지에서 세션 로드 실패
+            console.error('[세션] 보호된 페이지에서 세션 로드 실패 → 로그아웃');
+
+            try {
+              await logout();
+              await fetch('/api/auth/clear-cookie', { method: 'POST' });
+            } catch (logoutError) {
+              console.error('[로그아웃] 실패:', logoutError);
+            }
+
+            router.push('/sign-in?reason=session-expired');
+          }
+        }
+      } catch (error) {
+        console.error('[AppProvider] initialize 에러:', error);
+      } finally {
+        setIsInitialized(true);
       }
-
-      if (results[1].status === 'fulfilled') {
-        console.log('[세션] 복원 성공');
-      } else {
-        console.log('[세션] 로그인 안됨');
-      }
-
-      setIsInitialized(true);
     }
 
     async function loadAllCommonCodes() {
@@ -48,9 +80,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       try {
         setCodesLoading(true);
-        console.log('[공통코드] 전체 로드 시작');
+        console.log('[공통코드] API 호출');
 
         const response = await fetch('/api/common-codes/all');
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
         const result = await response.json();
         const rawCodes: CommonCodeRaw[] = result.data;
 
@@ -68,13 +105,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         setCodes(grouped);
         console.log('[공통코드] 로드 완료');
+      } catch (error) {
+        console.error('[공통코드] 로드 에러:', error);
+        throw error;
       } finally {
         setCodesLoading(false);
       }
     }
 
     initialize();
-  }, []);
+  }, [pathname]); // pathname 추가
+
+  console.log('[AppProvider] 렌더링, isInitialized:', isInitialized);
 
   if (!isInitialized) {
     return (
@@ -87,47 +129,4 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// 기존 훅들은 그대로 유지
-export function useCommonCode(categorizationCode: string): CommonCode[] {
-  const codes = useAtomValue(commonCodesAtom);
-  return codes[categorizationCode] || [];
-}
-
-export function useCommonCodeLoading(): boolean {
-  return useAtomValue(commonCodesLoadingAtom);
-}
-
-export function useRefreshCommonCodes() {
-  const setCodes = useSetAtom(commonCodesAtom);
-  const setLoading = useSetAtom(commonCodesLoadingAtom);
-
-  return async () => {
-    try {
-      setLoading(true);
-      console.log('[공통코드] 강제 새로고침');
-
-      const response = await fetch('/api/common-codes/all');
-      const result = await response.json();
-      const rawCodes: CommonCodeRaw[] = result.data;
-
-      const grouped: Record<string, CommonCode[]> = {};
-      rawCodes.forEach(item => {
-        const key = item.categorization_code;
-        if (!grouped[key]) {
-          grouped[key] = [];
-        }
-        grouped[key].push({
-          code: item.code,
-          code_value: item.code_value
-        });
-      });
-
-      setCodes(grouped);
-      console.log('[공통코드] 새로고침 완료');
-    } catch (error) {
-      console.error('[공통코드] 새로고침 실패:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-}
+// 나머지 훅들...
