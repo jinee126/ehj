@@ -1,54 +1,67 @@
 // atoms/authAtoms.ts
 import { atom } from 'jotai';
-import { fetchAuthSession, signOut } from 'aws-amplify/auth';
+import { signOut } from 'aws-amplify/auth';
 
 export interface UserSession {
   userId: string;
   email: string;
-  role: string; // 'manager', 'user', 'admin' 등
+  role: string;
   name?: string;
-  // 필요한 다른 정보들
 }
 
-// 세션 데이터 저장소
 export const userSessionAtom = atom<UserSession | null>(null);
-
-// 로딩 상태
 export const sessionLoadingAtom = atom<boolean>(false);
 
-// 세션 로드 액션
+// 세션 로드 액션 (쿠키 기반)
 export const loadSessionAtom = atom(
   null,
   async (get, set) => {
     set(sessionLoadingAtom, true);
 
     try {
-      const session = await fetchAuthSession();
-      const idToken = session.tokens?.idToken?.toString();
+      console.log('[세션] 로드 시작');
 
-      if (!idToken) {
+      // 1. 쿠키에서 토큰 가져오기
+      const token = getCookie('auth-token');
+
+      if (!token) {
+        console.log('[세션] 쿠키에 토큰 없음');
         throw new Error('토큰이 없습니다');
       }
 
+      console.log('[세션] 토큰 발견, 서버 API 호출');
+
+      // 2. 서버에 토큰 검증 + 사용자 정보 요청
       const response = await fetch('/api/session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
       if (!response.ok) {
+        console.error('[세션] API 응답 실패:', response.status);
+
+        // 401 Unauthorized = 토큰 만료/무효
+        if (response.status === 401) {
+          throw new Error('UNAUTHORIZED');
+        }
+
         throw new Error('세션 로드 실패');
       }
 
       const userData: UserSession = await response.json();
+      console.log('[세션] 로드 성공:', userData.email);
+
       set(userSessionAtom, userData);
       return userData;
 
-    } catch (error) {
-      console.error('세션 로드 에러:', error);
+    } catch (error: any) {
+      console.error('[세션] 로드 에러:', error.message);
       set(userSessionAtom, null);
+
+      // 에러를 throw하여 호출한 쪽에서 처리하도록
       throw error;
     } finally {
       set(sessionLoadingAtom, false);
@@ -60,7 +73,37 @@ export const loadSessionAtom = atom(
 export const logoutAtom = atom(
   null,
   async (get, set) => {
-    await signOut();
-    set(userSessionAtom, null);
+    try {
+      console.log('[로그아웃] 시작');
+
+      // Cognito 로그아웃
+      await signOut();
+
+      // atom 초기화
+      set(userSessionAtom, null);
+
+      console.log('[로그아웃] 완료');
+    } catch (error) {
+      console.error('[로그아웃] 실패:', error);
+      // 로그아웃 실패해도 atom은 초기화
+      set(userSessionAtom, null);
+      throw error;
+    }
   }
 );
+
+// 쿠키 읽기 헬퍼 함수
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') {
+    return null; // 서버 사이드
+  }
+
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+
+  if (parts.length === 2) {
+    return parts.pop()?.split(';').shift() || null;
+  }
+
+  return null;
+}
