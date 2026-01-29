@@ -1,17 +1,17 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAtom } from 'jotai';
 import { atomWithReset, useResetAtom } from 'jotai/utils';
-import { useCommonCode } from '@/hooks/useCommonCode'; // 경로는 지니님 프로젝트에 맞게
+import { useCommonCode } from '@/hooks/useCommonCode';
 
 // 폼 데이터 타입
 interface ServiceForm {
   serviceApi: string;
   serviceName: string;
   groupName: string;
-  useYn: string; // 공통코드 값
+  useYn: string;
   sortOrder: number;
 }
 
@@ -20,7 +20,7 @@ export const serviceFormAtom = atomWithReset<ServiceForm>({
   serviceApi: '',
   serviceName: '',
   groupName: '',
-  useYn: 'Y', // 기본값
+  useYn: 'Y',
   sortOrder: 0
 });
 
@@ -30,9 +30,10 @@ export default function ServiceManagePage() {
   const mode = searchParams.get('mode');
   const serviceId = searchParams.get('id');
 
-  // 공통코드 조회
-  const useYnCodes = useCommonCode('USEYN');
+  // 폼 ref 생성
+  const formRef = useRef<HTMLFormElement>(null);
 
+  const useYnCodes = useCommonCode('USEYN');
   const [formData, setFormData] = useAtom(serviceFormAtom);
   const resetFormData = useResetAtom(serviceFormAtom);
 
@@ -67,6 +68,47 @@ export default function ServiceManagePage() {
     }
   };
 
+  // 유효성 검사 메소드
+  const isValidateCheck = (): boolean => {
+    if (!formRef.current) return false;
+
+    // HTML5 기본 유효성 검사 실행
+    const isValid = formRef.current.reportValidity();
+
+    if (!isValid) {
+      // 유효하지 않으면 브라우저가 자동으로 첫 번째 오류 필드에 포커스
+      return false;
+    }
+
+    // 추가 커스텀 유효성 검사
+    if (!formData.serviceApi.trim()) {
+      alert('서비스 API를 입력해주세요.');
+      return false;
+    }
+
+    if (!formData.serviceName.trim()) {
+      alert('서비스명을 입력해주세요.');
+      return false;
+    }
+
+    if (!formData.groupName.trim()) {
+      alert('상품 그룹을 입력해주세요.');
+      return false;
+    }
+
+    if (!formData.useYn) {
+      alert('사용 여부를 선택해주세요.');
+      return false;
+    }
+
+    if (formData.sortOrder < 0) {
+      alert('호출 제한 수는 0 이상이어야 합니다.');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -75,7 +117,6 @@ export default function ServiceManagePage() {
     }));
   };
 
-  // 라디오 버튼 변경 핸들러
   const handleRadioChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
@@ -84,6 +125,11 @@ export default function ServiceManagePage() {
   };
 
   const handleSubmit = async () => {
+    // 유효성 검사
+    if (!isValidateCheck()) {
+      return;
+    }
+
     try {
       const url = mode === 'edit'
         ? `/api/service/${serviceId}`
@@ -111,104 +157,118 @@ export default function ServiceManagePage() {
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6">서비스 관리</h1>
 
-      <div className="space-y-4">
-        {/* 서비스 API */}
-        <div>
-          <label className="block mb-2">
-            서비스 API <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="serviceApi"
-            value={formData.serviceApi}
-            onChange={handleChange}
-            className="border p-2 w-full rounded"
-          />
-        </div>
+      <form ref={formRef} onSubmit={(e) => e.preventDefault()}>
+        <div className="space-y-4">
+          {/* 서비스 API */}
+          <div>
+            <label className="block mb-2">
+              서비스 API <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="serviceApi"
+              value={formData.serviceApi}
+              onChange={handleChange}
+              required
+              className="border p-2 w-full rounded"
+              placeholder="서비스 API를 입력하세요"
+            />
+          </div>
 
-        {/* 서비스명 */}
-        <div>
-          <label className="block mb-2">
-            서비스명 <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="serviceName"
-            value={formData.serviceName}
-            onChange={handleChange}
-            className="border p-2 w-full rounded"
-          />
-        </div>
+          {/* 서비스명 */}
+          <div>
+            <label className="block mb-2">
+              서비스명 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="serviceName"
+              value={formData.serviceName}
+              onChange={handleChange}
+              required
+              className="border p-2 w-full rounded"
+              placeholder="서비스명을 입력하세요"
+            />
+          </div>
 
-        {/* 상품 그룹 */}
-        <div>
-          <label className="block mb-2">
-            상품 그룹 <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="groupName"
-            value={formData.groupName}
-            onChange={handleChange}
-            className="border p-2 w-full rounded"
-          />
-        </div>
+          {/* 상품 그룹 */}
+          <div>
+            <label className="block mb-2">
+              상품 그룹 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="groupName"
+              value={formData.groupName}
+              onChange={handleChange}
+              required
+              className="border p-2 w-full rounded"
+              placeholder="상품 그룹을 입력하세요"
+            />
+          </div>
 
-        {/* 사용 여부 - 공통코드 */}
-        <div>
-          <label className="block mb-2">
-            사용 여부 <span className="text-red-500">*</span>
-          </label>
-          <div className="flex gap-4">
-            {useYnCodes?.map((code) => (
-              <label key={code.code} className="flex items-center cursor-pointer">
-                <input
-                  type="radio"
-                  name="useYn"
-                  value={code.code}
-                  checked={formData.useYn === code.code}
-                  onChange={() => handleRadioChange(code.code)}
-                  className="mr-2"
-                />
-                {code.codeName}
-              </label>
-            ))}
+          {/* 사용 여부 */}
+          <div>
+            <label className="block mb-2">
+              사용 여부 <span className="text-red-500">*</span>
+            </label>
+            <div className="flex gap-4">
+              {useYnCodes?.map((code) => (
+                <label key={code.code} className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="useYn"
+                    value={code.code}
+                    checked={formData.useYn === code.code}
+                    onChange={() => handleRadioChange(code.code)}
+                    required
+                    className="mr-2"
+                  />
+                  {code.codeName}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 호출 제한 수 */}
+          <div>
+            <label className="block mb-2">
+              호출 제한 수 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              name="sortOrder"
+              value={formData.sortOrder}
+              onChange={handleChange}
+              required
+              min="0"
+              className="border p-2 w-full rounded"
+              placeholder="호출 제한 수를 입력하세요"
+            />
+          </div>
+
+          {/* 버튼 */}
+          <div className="flex gap-2 justify-end mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                resetFormData();
+                router.back();
+              }}
+              className="px-4 py-2 border rounded hover:bg-gray-50"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              등록
+            </button>
           </div>
         </div>
-
-        {/* 호출 제한 수 */}
-        <div>
-          <label className="block mb-2">
-            호출 제한 수 <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="number"
-            name="sortOrder"
-            value={formData.sortOrder}
-            onChange={handleChange}
-            className="border p-2 w-full rounded"
-          />
-        </div>
-
-        {/* 버튼 */}
-        <div className="flex gap-2 justify-end mt-6">
-          <button
-            onClick={() => {
-              resetFormData();
-              router.back();
-            }}
-            className="px-4 py-2 border rounded hover:bg-gray-50"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            등록
-          </button>
-        </div>
-      </div>
+      </form>
     </div>
   );
 }
