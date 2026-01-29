@@ -1,0 +1,224 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAtom } from 'jotai';
+import { atomWithReset, useResetAtom } from 'jotai/utils';
+
+// 폼 데이터 타입
+interface ServiceForm {
+  serviceApi: string;
+  serviceName: string;
+  groupName: string;
+  useYn: 'Y' | 'N';
+  sortOrder: number;
+}
+
+// Atom 정의 - 초기값에 useYn: 'Y' 설정
+export const serviceFormAtom = atomWithReset<ServiceForm>({
+  serviceApi: '',
+  serviceName: '',
+  groupName: '',
+  useYn: 'Y',
+  sortOrder: 0
+});
+
+export default function ServiceManagePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const mode = searchParams.get('mode'); // 'create' | 'edit'
+  const serviceId = searchParams.get('id');
+
+  const [formData, setFormData] = useAtom(serviceFormAtom);
+  const resetFormData = useResetAtom(serviceFormAtom);
+
+  // 컴포넌트 언마운트 시 초기화
+  useEffect(() => {
+    return () => {
+      resetFormData();
+    };
+  }, [resetFormData]);
+
+  // 수정 모드일 때 데이터 조회
+  useEffect(() => {
+    if (mode === 'edit' && serviceId) {
+      fetchServiceData(serviceId);
+    } else if (mode === 'create') {
+      // 등록 모드면 초기화 (useYn: 'Y'가 기본값)
+      resetFormData();
+    }
+  }, [mode, serviceId]);
+
+  const fetchServiceData = async (id: string) => {
+    try {
+      const response = await fetch(`/api/service/${id}`);
+      const data = await response.json();
+
+      setFormData({
+        serviceApi: data.serviceApi || '',
+        serviceName: data.serviceName || '',
+        groupName: data.groupName || '',
+        useYn: data.useYn || 'Y',
+        sortOrder: data.sortOrder || 0
+      });
+    } catch (error) {
+      console.error('데이터 조회 실패:', error);
+    }
+  };
+
+  // input 변경 핸들러
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'sortOrder' ? Number(value) : value
+    }));
+  };
+
+  // 라디오 버튼 변경 핸들러
+  const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      useYn: e.target.value as 'Y' | 'N'
+    }));
+  };
+
+  // 저장 핸들러
+  const handleSubmit = async () => {
+    try {
+      const url = mode === 'edit'
+        ? `/api/service/${serviceId}`
+        : '/api/service';
+
+      const method = mode === 'edit' ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      if (response.ok) {
+        alert(mode === 'edit' ? '수정되었습니다.' : '등록되었습니다.');
+        resetFormData(); // 저장 후 초기화
+        router.push('/service/list');
+      }
+    } catch (error) {
+      console.error('저장 실패:', error);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">서비스 관리</h1>
+
+      <div className="space-y-4">
+        {/* 서비스 API */}
+        <div>
+          <label className="block mb-2">
+            서비스 API <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="serviceApi"
+            value={formData.serviceApi}
+            onChange={handleChange}
+            className="border p-2 w-full rounded"
+          />
+        </div>
+
+        {/* 서비스명 */}
+        <div>
+          <label className="block mb-2">
+            서비스명 <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="serviceName"
+            value={formData.serviceName}
+            onChange={handleChange}
+            className="border p-2 w-full rounded"
+          />
+        </div>
+
+        {/* 상품 그룹 */}
+        <div>
+          <label className="block mb-2">
+            상품 그룹 <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="groupName"
+            value={formData.groupName}
+            onChange={handleChange}
+            className="border p-2 w-full rounded"
+          />
+        </div>
+
+        {/* 사용 여부 */}
+        <div>
+          <label className="block mb-2">
+            사용 여부 <span className="text-red-500">*</span>
+          </label>
+          <div className="flex gap-4">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="radio"
+                name="useYn"
+                value="Y"
+                checked={formData.useYn === 'Y'}
+                onChange={handleRadioChange}
+                className="mr-2"
+              />
+              Y
+            </label>
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="radio"
+                name="useYn"
+                value="N"
+                checked={formData.useYn === 'N'}
+                onChange={handleRadioChange}
+                className="mr-2"
+              />
+              N
+            </label>
+          </div>
+        </div>
+
+        {/* 호출 제한 수 */}
+        <div>
+          <label className="block mb-2">
+            호출 제한 수 <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            name="sortOrder"
+            value={formData.sortOrder}
+            onChange={handleChange}
+            className="border p-2 w-full rounded"
+          />
+        </div>
+
+        {/* 버튼 */}
+        <div className="flex gap-2 justify-end mt-6">
+          <button
+            onClick={() => {
+              resetFormData();
+              router.back();
+            }}
+            className="px-4 py-2 border rounded hover:bg-gray-50"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            등록
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
