@@ -30,26 +30,26 @@ export default function ServiceManagePage() {
   const mode = searchParams.get('mode');
   const serviceId = searchParams.get('id');
 
-  // 폼 ref 생성
   const formRef = useRef<HTMLFormElement>(null);
-
   const useYnCodes = useCommonCode('USEYN');
   const [formData, setFormData] = useAtom(serviceFormAtom);
   const resetFormData = useResetAtom(serviceFormAtom);
 
+  // 컴포넌트 마운트 시 무조건 초기화
   useEffect(() => {
+    // 먼저 초기화
+    resetFormData();
+
+    // 수정 모드일 때만 데이터 조회
+    if (mode === 'edit' && serviceId) {
+      fetchServiceData(serviceId);
+    }
+
+    // 언마운트 시에도 초기화
     return () => {
       resetFormData();
     };
-  }, [resetFormData]);
-
-  useEffect(() => {
-    if (mode === 'edit' && serviceId) {
-      fetchServiceData(serviceId);
-    } else if (mode === 'create') {
-      resetFormData();
-    }
-  }, [mode, serviceId]);
+  }, [mode, serviceId, resetFormData]);
 
   const fetchServiceData = async (id: string) => {
     try {
@@ -68,19 +68,15 @@ export default function ServiceManagePage() {
     }
   };
 
-  // 유효성 검사 메소드
   const isValidateCheck = (): boolean => {
     if (!formRef.current) return false;
 
-    // HTML5 기본 유효성 검사 실행
     const isValid = formRef.current.reportValidity();
 
     if (!isValid) {
-      // 유효하지 않으면 브라우저가 자동으로 첫 번째 오류 필드에 포커스
       return false;
     }
 
-    // 추가 커스텀 유효성 검사
     if (!formData.serviceApi.trim()) {
       alert('서비스 API를 입력해주세요.');
       return false;
@@ -125,7 +121,6 @@ export default function ServiceManagePage() {
   };
 
   const handleSubmit = async () => {
-    // 유효성 검사
     if (!isValidateCheck()) {
       return;
     }
