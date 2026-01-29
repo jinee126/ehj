@@ -4,47 +4,48 @@ import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAtom } from 'jotai';
 import { atomWithReset, useResetAtom } from 'jotai/utils';
+import { useCommonCode } from '@/hooks/useCommonCode'; // 경로는 지니님 프로젝트에 맞게
 
 // 폼 데이터 타입
 interface ServiceForm {
   serviceApi: string;
   serviceName: string;
   groupName: string;
-  useYn: 'Y' | 'N';
+  useYn: string; // 공통코드 값
   sortOrder: number;
 }
 
-// Atom 정의 - 초기값에 useYn: 'Y' 설정
+// Atom 정의
 export const serviceFormAtom = atomWithReset<ServiceForm>({
   serviceApi: '',
   serviceName: '',
   groupName: '',
-  useYn: 'Y',
+  useYn: 'Y', // 기본값
   sortOrder: 0
 });
 
 export default function ServiceManagePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const mode = searchParams.get('mode'); // 'create' | 'edit'
+  const mode = searchParams.get('mode');
   const serviceId = searchParams.get('id');
+
+  // 공통코드 조회
+  const useYnCodes = useCommonCode('USEYN');
 
   const [formData, setFormData] = useAtom(serviceFormAtom);
   const resetFormData = useResetAtom(serviceFormAtom);
 
-  // 컴포넌트 언마운트 시 초기화
   useEffect(() => {
     return () => {
       resetFormData();
     };
   }, [resetFormData]);
 
-  // 수정 모드일 때 데이터 조회
   useEffect(() => {
     if (mode === 'edit' && serviceId) {
       fetchServiceData(serviceId);
     } else if (mode === 'create') {
-      // 등록 모드면 초기화 (useYn: 'Y'가 기본값)
       resetFormData();
     }
   }, [mode, serviceId]);
@@ -66,7 +67,6 @@ export default function ServiceManagePage() {
     }
   };
 
-  // input 변경 핸들러
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -76,14 +76,13 @@ export default function ServiceManagePage() {
   };
 
   // 라디오 버튼 변경 핸들러
-  const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRadioChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
-      useYn: e.target.value as 'Y' | 'N'
+      useYn: value
     }));
   };
 
-  // 저장 핸들러
   const handleSubmit = async () => {
     try {
       const url = mode === 'edit'
@@ -100,7 +99,7 @@ export default function ServiceManagePage() {
 
       if (response.ok) {
         alert(mode === 'edit' ? '수정되었습니다.' : '등록되었습니다.');
-        resetFormData(); // 저장 후 초기화
+        resetFormData();
         router.push('/service/list');
       }
     } catch (error) {
@@ -155,34 +154,25 @@ export default function ServiceManagePage() {
           />
         </div>
 
-        {/* 사용 여부 */}
+        {/* 사용 여부 - 공통코드 */}
         <div>
           <label className="block mb-2">
             사용 여부 <span className="text-red-500">*</span>
           </label>
           <div className="flex gap-4">
-            <label className="flex items-center cursor-pointer">
-              <input
-                type="radio"
-                name="useYn"
-                value="Y"
-                checked={formData.useYn === 'Y'}
-                onChange={handleRadioChange}
-                className="mr-2"
-              />
-              Y
-            </label>
-            <label className="flex items-center cursor-pointer">
-              <input
-                type="radio"
-                name="useYn"
-                value="N"
-                checked={formData.useYn === 'N'}
-                onChange={handleRadioChange}
-                className="mr-2"
-              />
-              N
-            </label>
+            {useYnCodes?.map((code) => (
+              <label key={code.code} className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="useYn"
+                  value={code.code}
+                  checked={formData.useYn === code.code}
+                  onChange={() => handleRadioChange(code.code)}
+                  className="mr-2"
+                />
+                {code.codeName}
+              </label>
+            ))}
           </div>
         </div>
 
