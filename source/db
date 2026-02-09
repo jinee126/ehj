@@ -1,95 +1,54 @@
-import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.index.query.BoolQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.RangeQueryBuilder;
-import org.elasticsearch.script.Script;
-import org.elasticsearch.search.aggregations.AggregationBuilders;
-import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
-import org.elasticsearch.search.aggregations.metrics.SumAggregationBuilder;
-import org.elasticsearch.search.builder.SearchSourceBuilder;
-
-public class ElasticSearchExample {
-
-    public static SearchRequest createSearchRequest() {
-
-        // ===== 1. Range Query (datetime) =====
-        RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery("datetime")
-                .gte("2026-02-01T00:00:00.000+09:00")
-                .lte("2026-02-28T23:59:59.999+09:00");
-
-
-        // ===== 2. Bool Query =====
-        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery()
-                .filter(rangeQuery);
-
-
-        // ===== 3. Painless Script =====
-        String scriptSource =
-                "String keyword = doc['service.keyword'].value; " +
-                "if (keyword.startsWith('MAPS')) { return 'MAPS'; } " +
-                "else if (keyword.startsWith('PLACE')) { return 'PLACE'; } " +
-                "else if (keyword.startsWith('GEOCODING')) { return 'GEOCODING'; } " +
-                "else if (keyword.startsWith('DIRECTION')) { return 'DIRECTION'; } " +
-                "else if (keyword.startsWith('MATRIX')) { return 'MATRIX'; } " +
-                "else if (keyword.startsWith('PEDESTRIAN')) { return 'PEDESTRIAN'; } " +
-                "else if (keyword.startsWith('ROUTE')) { return 'ROUTE'; } " +
-                "else if (keyword.startsWith('MULTISTOP')) { return 'MULTISTOP'; } " +
-                "else if (keyword.startsWith('OPTIMIZATION')) { return 'OPTIMIZATION'; } " +
-                "else if (keyword.startsWith('REALTIME')) { return 'REALTIME'; } " +
-                "else if (keyword.startsWith('TRAFFIC')) { return 'TRAFFIC'; } " +
-                "else { return 'ETC'; }";
-
-
-        Script script = new Script(scriptSource);
-
-
-        // ===== 4. Terms Aggregation (by_service) =====
-        TermsAggregationBuilder byServiceAgg =
-                AggregationBuilders.terms("by_service")
-                        .script(script)
-                        .size(10_000_000);
-
-
-        // ===== 5. Sum Aggregation (tot) =====
-        SumAggregationBuilder sumAgg =
-                AggregationBuilders.sum("tot")
-                        .field("sum");
-
-
-        // sub aggregation으로 sum 추가
-        byServiceAgg.subAggregation(sumAgg);
-
-
-        // ===== 6. SearchSourceBuilder =====
-        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-
-        sourceBuilder.size(0);                 // size: 0
-        sourceBuilder.query(boolQuery);        // query
-        sourceBuilder.aggregation(byServiceAgg); // aggs
-
-
-        // ===== 7. SearchRequest =====
-        SearchRequest searchRequest =
-                new SearchRequest("prod-daily-statistics"); // index명
-
-        searchRequest.source(sourceBuilder);
-
-
-        return searchRequest;
-    }
-
-
-    // ===== 실행 예시 =====
-    public static void execute(RestHighLevelClient client) throws Exception {
-
-        SearchRequest request = createSearchRequest();
-
-        SearchResponse response =
-                client.search(request, RequestOptions.DEFAULT);
-
-        System.out.println(response);
-    }
+public SearchRequest buildSearchRequest() {
+    // Range Query 생성
+    RangeQuery rangeQuery = new RangeQuery.Builder()
+        .field("datetime")
+        .gte(JsonData.of("2026-02-01T00:00:00.000+09:00"))
+        .lte(JsonData.of("2026-02-07T23:59:59.999+09:00"))
+        .build();
+    
+    // Bool Query 생성
+    BoolQuery boolQuery = new BoolQuery.Builder()
+        .filter(new Query.Builder().range(rangeQuery).build())
+        .build();
+    
+    // Script 소스
+    String scriptSource = 
+        "String keyword = doc['service_keyword'].value; " +
+        "if (keyword.startsWith(\"SEARCH\")) { return 'SEARCH'; } " +
+        "else if (keyword.startsWith(\"DIRECTION\")) { return 'DIRECTION'; } " +
+        // ... 나머지 조건들
+        "else { return 'DIRECTION'; }";
+    
+    // Script 생성
+    Script script = new Script.Builder()
+        .inline(i -> i.source(scriptSource))
+        .build();
+    
+    // Sub-aggregation (sum) 생성
+    SumAggregation sumAgg = new SumAggregation.Builder()
+        .field("numHits")
+        .build();
+    
+    // Terms Aggregation 생성
+    TermsAggregation termsAgg = new TermsAggregation.Builder()
+        .script(script)
+        .size(10000000)
+        .build();
+    
+    // Aggregation 조합
+    Aggregation byServiceAgg = new Aggregation.Builder()
+        .terms(termsAgg)
+        .aggregations("tot", new Aggregation.Builder()
+            .sum(sumAgg)
+            .build()
+        )
+        .build();
+    
+    // SearchRequest 리턴
+    return new SearchRequest.Builder()
+        .index("MLP-운영-d-100.120.13.52")
+        .size(0)
+        .query(new Query.Builder().bool(boolQuery).build())
+        .aggregations("by_service", byServiceAgg)
+        .build();
 }
