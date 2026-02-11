@@ -10,3 +10,21 @@ const getDefaultOption = (): ApexOptions => {
 };
 
 const finalOption = merge({}, getDefaultOption(), optionOverrides);
+
+
+const option: ApexOptions = {
+  colors: ["#111111", "#333333", "#555555"],
+  chart: {
+    animations: { enabled: false },
+  },
+};
+
+return (
+  <CustomChart
+    type="pie"
+    data={data}
+    height={300}
+    optionOverrides={option}
+  />
+);
+
