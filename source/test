@@ -1,0 +1,12 @@
+const getDefaultOption = (): ApexOptions => {
+  switch (type) {
+    case "pie":
+      return getPieOption();
+    case "bar":
+      return getBarOptions();
+    default:
+      return getManyBarOptions();
+  }
+};
+
+const finalOption = merge({}, getDefaultOption(), optionOverrides);
