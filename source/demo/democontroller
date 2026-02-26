@@ -1,0 +1,8 @@
+@RestController
+public class DummyController {
+
+    @GetMapping("/api/test")
+    public String test() {
+        return "dummy service ok";
+    }
+}
