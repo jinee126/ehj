@@ -1,0 +1,198 @@
+// ============================================================
+// components/api-key/ProductSettingModal.tsx
+// ============================================================
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { Product, ProductGroup, MappedProduct } from "@/types/apiKey";
+
+interface Props {
+  open: boolean;
+  allProducts: Product[];                // 전체 상품 목록
+  initialMapped: MappedProduct[];        // 수정 모드: 기존 매핑된 상품들 (등록이면 [])
+  onConfirm: (selected: MappedProduct[]) => void;
+  onClose: () => void;
+}
+
+const GROUPS: ProductGroup[] = ["자동차그룹사", "그룹사", "그룹사 외"];
+
+export default function ProductSettingModal({
+  open,
+  allProducts,
+  initialMapped,
+  onConfirm,
+  onClose,
+}: Props) {
+  const [selectedGroup, setSelectedGroup] = useState<ProductGroup>("자동차그룹사");
+
+  // 체크된 productId Set - 모달 열릴 때 initialMapped로 초기화
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+
+  // 모달 열릴 때마다 초기 체크 상태 세팅
+  // 핵심: 등록이면 빈 Set, 수정이면 기존 매핑된 ID들로 채움
+  useEffect(() => {
+    if (open) {
+      setCheckedIds(new Set(initialMapped.map((p) => p.productId)));
+      setSelectedGroup("자동차그룹사");
+    }
+  }, [open, initialMapped]);
+
+  // 선택된 그룹의 상품만 필터링
+  const filteredProducts = useMemo(
+    () => allProducts.filter((p) => p.productGroup === selectedGroup),
+    [allProducts, selectedGroup]
+  );
+
+  // 전체 선택 여부
+  const isAllChecked =
+    filteredProducts.length > 0 &&
+    filteredProducts.every((p) => checkedIds.has(p.productId));
+
+  const handleToggleAll = () => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (isAllChecked) {
+        filteredProducts.forEach((p) => next.delete(p.productId));
+      } else {
+        filteredProducts.forEach((p) => next.add(p.productId));
+      }
+      return next;
+    });
+  };
+
+  const handleToggle = (productId: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  const handleConfirm = () => {
+    // 체크된 productId에 해당하는 상품들을 MappedProduct 형태로 변환
+    const selected: MappedProduct[] = allProducts
+      .filter((p) => checkedIds.has(p.productId))
+      .map((p) => {
+        // 수정 모드: 기존 매핑된 상품이면 기존 options 유지, 새로 추가된 상품은 options 빈 배열
+        const existing = initialMapped.find((m) => m.productId === p.productId);
+        return {
+          ...p,
+          useYn: existing?.useYn ?? "Y",
+          options: existing?.options ?? [],
+        };
+      });
+
+    onConfirm(selected);
+    onClose();
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white w-[500px] rounded shadow-lg">
+        {/* Header */}
+        <div className="flex items-center justify-between bg-gray-700 text-white px-4 py-2">
+          <span className="font-semibold">상품 설정</span>
+          <button onClick={onClose} className="text-white hover:text-gray-300 text-lg">
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* ① 상품 그룹 선택 */}
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium w-24 shrink-0">상품 그룹 선택</span>
+            <div className="flex gap-4">
+              {GROUPS.map((group) => (
+                <label key={group} className="flex items-center gap-1 cursor-pointer text-sm">
+                  <input
+                    type="radio"
+                    name="productGroup"
+                    value={group}
+                    checked={selectedGroup === group}
+                    onChange={() => setSelectedGroup(group)}
+                    className="accent-blue-600"
+                  />
+                  {group}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* ② 상품 목록 */}
+          <div>
+            <p className="text-sm font-medium mb-1">상품 목록</p>
+            <div className="border rounded overflow-hidden">
+              {/* 테이블 헤더 */}
+              <div className="bg-gray-700 text-white grid grid-cols-[40px_1fr] text-sm">
+                {/* ② 전체선택 체크박스 */}
+                <div className="flex items-center justify-center py-2">
+                  <input
+                    type="checkbox"
+                    checked={isAllChecked}
+                    onChange={handleToggleAll}
+                    className="w-4 h-4"
+                  />
+                </div>
+                {/* ③ 컬럼명 */}
+                <div className="py-2 px-3 font-medium">상품명</div>
+              </div>
+
+              {/* 상품 행 */}
+              <div className="max-h-48 overflow-y-auto divide-y">
+                {filteredProducts.length === 0 ? (
+                  <div className="text-center text-sm text-gray-400 py-6">
+                    해당 그룹의 상품이 없습니다.
+                  </div>
+                ) : (
+                  filteredProducts.map((product) => (
+                    <label
+                      key={product.productId}
+                      className="grid grid-cols-[40px_1fr] items-center hover:bg-gray-50 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-center py-2">
+                        <input
+                          type="checkbox"
+                          checked={checkedIds.has(product.productId)}
+                          onChange={() => handleToggle(product.productId)}
+                          className="w-4 h-4"
+                        />
+                      </div>
+                      <div className="py-2 px-3 text-sm">{product.productName}</div>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* 선택된 상품 수 표시 */}
+            <p className="text-xs text-gray-500 mt-1">
+              전체 {allProducts.length}개 중 {checkedIds.size}개 선택됨
+            </p>
+          </div>
+
+          {/* ④ 버튼 */}
+          <div className="flex justify-center gap-2 pt-2">
+            <button
+              onClick={handleConfirm}
+              className="px-6 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+            >
+              선택 완료
+            </button>
+            <button
+              onClick={onClose}
+              className="px-6 py-1.5 bg-white border text-sm rounded hover:bg-gray-50"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
