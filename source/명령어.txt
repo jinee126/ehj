@@ -7,3 +7,4 @@ openssl s_client -showcerts -connect <ES_HOST>:9200 </dev/null
 const where = typeof window === 'undefined' ? 'server' : 'client';
 console.log('[callGetApi]', where, { base: process.env.NEXT_PUBLIC_API_BASE, API_BASE: process.env.API_BASE, url });
 
+^\s*uri\s*:\s*.*$
