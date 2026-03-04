@@ -4,13 +4,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyDetailInfo, GoodsItem } from "@/types/apiKey";
-import { useAllGroupCodes, saveApiKey } from "@/hooks/useApiKeyData";
+import { KeyDetailInfo, GoodsItem, GroupCodeInfo } from "@/types/apiKey";
 import { useCommonCode } from "@/hooks/useCommonCode";
+import { saveApiKey } from "@/hooks/useApiKeyData";
 import ProductSettingModal from "./ProductSettingModal";
 import ServiceOptionModal from "./ServiceOptionModal";
 
-// 페이지 모드 상수 (호출하는 쪽 규격에 맞게 수정)
 const PAGE_MODE = {
   REG: "REG",
   EDIT: "EDIT",
@@ -48,19 +47,46 @@ export default function ApiKeyForm({ id }: Props) {
   const { codes: monthCodes }     = useCommonCode("MONTH");
 
   // ── 전체 상품 목록 ────────────────────────────────────────
-  const { groupCodes: allGroupCodes, loading: groupCodesLoading } = useAllGroupCodes();
+  const [allGroupCodes, setAllGroupCodes] = useState<GroupCodeInfo[]>([]);
+  const [groupCodesLoading, setGroupCodesLoading] = useState(false);
 
   // ── 폼 상태 ───────────────────────────────────────────────
   const [form, setForm] = useState<Partial<KeyDetailInfo>>(defaultForm);
-
-  // 상품 설정 상태 (모달 UI용 GoodsItem[], 저장 시 services[]로 변환)
   const [goodsList, setGoodsList] = useState<GoodsItem[]>([]);
 
-  // ── 상세 조회 (수정 모드만) ───────────────────────────────
+  // ── 로딩 상태 ─────────────────────────────────────────────
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // ── 전체 상품 목록 조회 ───────────────────────────────────
+  useEffect(() => {
+    const fetchGroupCodes = async () => {
+      setGroupCodesLoading(true);
+      try {
+        const resultData = await callGetAPI(
+            BASE_URL + `/management/group-codes`,
+            HTTP_METHOD.GET,
+            {},
+            {}
+        );
+        if (resultData.resultCode === ResultCode.ET00) {
+          if (resultData.resCode === ServerResCode.OK) {
+            setAllGroupCodes(resultData.data as GroupCodeInfo[]);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setGroupCodesLoading(false);
+      }
+    };
+
+    fetchGroupCodes();
+  }, []);
+
+  // ── 상세 조회 (수정 모드 + allGroupCodes 로딩 완료 후) ────
   useEffect(() => {
     if (!isEditMode) return;
+    if (allGroupCodes.length === 0) return;  // groupCodes 준비 후 실행
 
     const fetchDetail = async () => {
       setDetailLoading(true);
@@ -105,7 +131,7 @@ export default function ApiKeyForm({ id }: Props) {
     };
 
     fetchDetail();
-  }, [id, isEditMode]);  // allGroupCodes 로딩 후 변환이 필요하므로 groupCodes 준비 후 실행되도록 아래 조건 추가
+  }, [id, isEditMode, allGroupCodes]);
 
   // ── 모달 상태 ─────────────────────────────────────────────
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -120,17 +146,14 @@ export default function ApiKeyForm({ id }: Props) {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  /** 상품 설정 모달 선택 완료 */
   const handleProductConfirm = (selected: GoodsItem[]) => {
     setGoodsList(selected);
   };
 
-  /** 서비스 옵션 모달 열기 */
   const handleOpenServiceOption = (goods: GoodsItem) => {
     setServiceOptionModal({ open: true, goods });
   };
 
-  /** 서비스 옵션 모달 선택 완료 → 해당 상품 serviceOptions 업데이트 */
   const handleServiceOptionConfirm = (updated: GoodsItem) => {
     setGoodsList((prev) =>
         prev.map((g) =>
@@ -139,7 +162,6 @@ export default function ApiKeyForm({ id }: Props) {
     );
   };
 
-  /** 저장 - GoodsItem[] → services[] 변환 후 전송 */
   const handleSave = async () => {
     const payload: KeyDetailInfo = {
       ...(form as KeyDetailInfo),
@@ -302,7 +324,6 @@ export default function ApiKeyForm({ id }: Props) {
                 </button>
               </div>
 
-              {/* 선택된 상품 테이블 */}
               <div className="border rounded overflow-hidden">
                 <div className="bg-gray-700 text-white grid grid-cols-[1fr_1fr_80px] text-xs">
                   <div className="py-2 px-2">상품 그룹</div>
@@ -363,8 +384,6 @@ export default function ApiKeyForm({ id }: Props) {
         </div>
 
         {/* ── 모달 ────────────────────────────────────── */}
-
-        {/* 상품 설정 모달 */}
         <ProductSettingModal
             open={productModalOpen}
             allGroupCodes={allGroupCodes}
@@ -373,7 +392,6 @@ export default function ApiKeyForm({ id }: Props) {
             onClose={() => setProductModalOpen(false)}
         />
 
-        {/* 서비스 옵션 모달 */}
         <ServiceOptionModal
             open={serviceOptionModal.open}
             goods={serviceOptionModal.goods}
