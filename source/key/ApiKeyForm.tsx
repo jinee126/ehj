@@ -4,88 +4,108 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyDetailInfo, GoodsItem, GroupCodeInfo } from "@/types/apiKey";
-import { useAllGroupCodes, useApiKeyDetail, saveApiKey } from "@/hooks/useApiKeyData";
+import { KeyDetailInfo, GoodsItem } from "@/types/apiKey";
+import { useAllGroupCodes, saveApiKey } from "@/hooks/useApiKeyData";
 import { useCommonCode } from "@/hooks/useCommonCode";
 import ProductSettingModal from "./ProductSettingModal";
 import ServiceOptionModal from "./ServiceOptionModal";
 
+// 페이지 모드 상수 (호출하는 쪽 규격에 맞게 수정)
+const PAGE_MODE = {
+  REG: "REG",
+  EDIT: "EDIT",
+} as const;
+
 interface Props {
-  keyId?: string;  // 없으면 등록 모드, 있으면 수정 모드
+  id: string;  // 등록이면 PAGE_MODE.REG, 수정이면 keyId 값
 }
 
-const defaultForm: Omit<KeyDetailInfo, "api_key" | "device_id" | "serial_no" | "create_user" | "update_user" | "create_date" | "update_date"> = {
-  approve: "",
-  u_name: "",
-  u_email: "",
-  u_company: "",
+const defaultForm: Partial<KeyDetailInfo> = {
+  approve:      "",
+  u_name:       "",
+  u_email:      "",
+  u_company:    "",
   u_department: "",
   service_name: "",
-  due_date: "",
-  web_service: "",
-  ios_service: "",
-  aos_service: "",
-  limit_type: "",
-  ip_address: "",
-  token: "",
-  telemetry: false,
-  services: [],
+  due_date:     "",
+  web_service:  "",
+  ios_service:  "",
+  aos_service:  "",
+  limit_type:   "",
+  ip_address:   "",
+  token:        "",
+  telemetry:    false,
+  api_key:      "",
+  services:     [],
 };
 
-export default function ApiKeyForm({ keyId }: Props) {
-  const isEditMode = !!keyId;
+export default function ApiKeyForm({ id }: Props) {
+  const isEditMode = id !== PAGE_MODE.REG;
 
-  // ── 데이터 로딩 ───────────────────────────────────────────
+  // ── 공통코드 ──────────────────────────────────────────────
+  const { codes: useYnCodes }     = useCommonCode("USEYN");
+  const { codes: limitTypeCodes } = useCommonCode("LIMITTYPE");
+  const { codes: monthCodes }     = useCommonCode("MONTH");
+
+  // ── 전체 상품 목록 ────────────────────────────────────────
   const { groupCodes: allGroupCodes, loading: groupCodesLoading } = useAllGroupCodes();
-  const { detail, loading: detailLoading } = useApiKeyDetail(isEditMode ? keyId : null);
-
-  // 공통코드
-  const { codes: approveCodes } = useCommonCode("APPROVE");       // 권한 승인 여부
-  const { codes: limitTypeCodes } = useCommonCode("LIMIT_TYPE");  // 서비스 제한 형식
 
   // ── 폼 상태 ───────────────────────────────────────────────
   const [form, setForm] = useState<Partial<KeyDetailInfo>>(defaultForm);
 
-  // 상품 설정 상태 (모달용 GoodsItem 목록)
-  // services[]와 별도로 관리하다가 저장 시 변환
+  // 상품 설정 상태 (모달 UI용 GoodsItem[], 저장 시 services[]로 변환)
   const [goodsList, setGoodsList] = useState<GoodsItem[]>([]);
 
-  // 수정 모드: API 응답이 오면 폼 데이터 채우기
+  // ── 상세 조회 (수정 모드만) ───────────────────────────────
+  const [detailLoading, setDetailLoading] = useState(false);
+
   useEffect(() => {
-    if (!isEditMode || !detail) return;
+    if (!isEditMode) return;
 
-    setForm({
-      approve:      detail.approve,
-      u_name:       detail.u_name,
-      u_email:      detail.u_email,
-      u_company:    detail.u_company,
-      u_department: detail.u_department,
-      service_name: detail.service_name,
-      due_date:     detail.due_date,
-      web_service:  detail.web_service,
-      ios_service:  detail.ios_service,
-      aos_service:  detail.aos_service,
-      limit_type:   detail.limit_type,
-      ip_address:   detail.ip_address,
-      token:        detail.token,
-      telemetry:    detail.telemetry,
-      api_key:      detail.api_key,
-    });
+    const fetchDetail = async () => {
+      setDetailLoading(true);
+      try {
+        const resultData = await callGetAPI(
+            BASE_URL + `/management/key/${id}`,
+            HTTP_METHOD.GET,
+            {},
+            {}
+        );
+        if (resultData.resultCode === ResultCode.ET00) {
+          if (resultData.resCode === ServerResCode.OK) {
+            const detailData = resultData.data as KeyDetailInfo;
 
-    // services[] → GoodsItem[] 변환 (수정 모드 초기 체크 상태 복원용)
-    const mapped: GoodsItem[] = detail.services.map((s) => {
-      const groupCodeInfo = allGroupCodes.find((g) => g.group_code === s.group_code);
-      return {
-        groupCodeInfo: groupCodeInfo ?? { group_code: s.group_code, group_name: s.group_code, group_type: "" },
-        check: true,
-        serviceOptions: {
-          options: s.options,
-          limit_size: s.limit_type,
-        },
-      };
-    });
-    setGoodsList(mapped);
-  }, [isEditMode, detail, allGroupCodes]);
+            // 폼 데이터 세팅
+            setForm({ ...detailData });
+
+            // services[] → GoodsItem[] 변환 (모달 체크 상태 복원)
+            const mapped: GoodsItem[] = detailData.services.map((s) => {
+              const groupCodeInfo = allGroupCodes.find((g) => g.group_code === s.group_code);
+              return {
+                groupCodeInfo: groupCodeInfo ?? {
+                  group_code: s.group_code,
+                  group_name: s.group_code,
+                  group_type: "",
+                },
+                check: true,
+                serviceOptions: {
+                  options:    s.options,
+                  limit_size: s.limit_type,
+                },
+              };
+            });
+            setGoodsList(mapped);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+
+    fetchDetail();
+  }, [id, isEditMode]);  // allGroupCodes 로딩 후 변환이 필요하므로 groupCodes 준비 후 실행되도록 아래 조건 추가
 
   // ── 모달 상태 ─────────────────────────────────────────────
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -100,7 +120,7 @@ export default function ApiKeyForm({ keyId }: Props) {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  /** 상품 설정 모달에서 선택 완료 */
+  /** 상품 설정 모달 선택 완료 */
   const handleProductConfirm = (selected: GoodsItem[]) => {
     setGoodsList(selected);
   };
@@ -110,7 +130,7 @@ export default function ApiKeyForm({ keyId }: Props) {
     setServiceOptionModal({ open: true, goods });
   };
 
-  /** 서비스 옵션 모달에서 선택 완료 → 해당 상품의 serviceOptions 업데이트 */
+  /** 서비스 옵션 모달 선택 완료 → 해당 상품 serviceOptions 업데이트 */
   const handleServiceOptionConfirm = (updated: GoodsItem) => {
     setGoodsList((prev) =>
         prev.map((g) =>
@@ -132,14 +152,14 @@ export default function ApiKeyForm({ keyId }: Props) {
     };
 
     try {
-      await saveApiKey(isEditMode ? keyId : null, payload);
+      await saveApiKey(isEditMode ? id : null, payload);
       alert(isEditMode ? "수정되었습니다." : "등록되었습니다.");
     } catch (e) {
       alert("저장 실패");
     }
   };
 
-  if ((isEditMode && detailLoading) || groupCodesLoading) {
+  if (detailLoading || groupCodesLoading) {
     return <div className="p-8 text-center text-gray-500">로딩 중...</div>;
   }
 
@@ -155,10 +175,10 @@ export default function ApiKeyForm({ keyId }: Props) {
             <h2 className="font-semibold border-b pb-1">담당자 정보</h2>
 
             {[
-              { label: "신청자명 *",  field: "u_name" },
-              { label: "이메일 *",    field: "u_email" },
-              { label: "소속기관 *",  field: "u_company" },
-              { label: "소속부서 *",  field: "u_department" },
+              { label: "신청자명 *", field: "u_name" },
+              { label: "이메일 *",   field: "u_email" },
+              { label: "소속기관 *", field: "u_company" },
+              { label: "소속부서 *", field: "u_department" },
             ].map(({ label, field }) => (
                 <div key={field} className="flex items-center gap-2">
                   <label className="text-sm w-24 shrink-0 text-right">{label}</label>
@@ -171,21 +191,26 @@ export default function ApiKeyForm({ keyId }: Props) {
                 </div>
             ))}
 
+            {/* 허용일시 - MONTH 공통코드 */}
             <div className="flex items-center gap-2">
               <label className="text-sm w-24 shrink-0 text-right">허용일시 *</label>
-              <input
-                  type="date"
+              <select
                   value={form.due_date ?? ""}
                   onChange={(e) => handleFormChange("due_date", e.target.value)}
                   className="flex-1 border rounded px-2 py-1 text-sm"
-              />
+              >
+                <option value="">허용기간선택</option>
+                {monthCodes.map((c) => (
+                    <option key={c.code} value={c.code}>{c.codeName}</option>
+                ))}
+              </select>
             </div>
 
-            {/* 승인 여부 - 공통코드 */}
+            {/* 사용여부 - USEYN 공통코드 */}
             <div className="flex items-center gap-2">
               <label className="text-sm w-24 shrink-0 text-right">사용여부</label>
               <div className="flex gap-4">
-                {approveCodes.map((c) => (
+                {useYnCodes.map((c) => (
                     <label key={c.code} className="flex items-center gap-1 text-sm cursor-pointer">
                       <input
                           type="radio"
@@ -228,9 +253,9 @@ export default function ApiKeyForm({ keyId }: Props) {
             <h2 className="font-semibold border-b pb-1">서비스 정보</h2>
 
             {[
-              { label: "서비스명 *",           field: "service_name" },
-              { label: "WEB(도메인주소)",       field: "web_service" },
-              { label: "iOS(bundle ID)",        field: "ios_service" },
+              { label: "서비스명 *",            field: "service_name" },
+              { label: "WEB(도메인주소)",        field: "web_service" },
+              { label: "iOS(bundle ID)",         field: "ios_service" },
               { label: "Android(Package Name)", field: "aos_service" },
             ].map(({ label, field }) => (
                 <div key={field} className="flex items-center gap-2">
@@ -244,7 +269,7 @@ export default function ApiKeyForm({ keyId }: Props) {
                 </div>
             ))}
 
-            {/* 서비스 제한 형식 - 공통코드 */}
+            {/* 애플리케이션 제한 - LIMITTYPE 공통코드 */}
             <div>
               <h3 className="font-medium text-sm mb-2">애플리케이션 제한</h3>
               <div className="space-y-1">
