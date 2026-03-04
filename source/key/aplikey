@@ -2,64 +2,80 @@
 // types/apiKey.ts
 // ============================================================
 
-export type ProductGroup = "자동차그룹사" | "그룹사" | "그룹사 외";
-
 // 공통코드로 관리되는 값들은 string으로 선언
-export type AppRestriction = string;  // 공통코드 그룹: APP_RESTRICTION
-export type UseYn = string;           // 공통코드 그룹: USE_YN
+export type ApproveType = string;   // 공통코드 그룹: APPROVE (권한 승인 여부)
+export type LimitType = string;     // 공통코드 그룹: LIMIT_TYPE (IP/IOS/AOS)
 
-export interface Product {
-  productId: string;
-  productName: string;
-  productCode: string;
-  productGroup: ProductGroup;
+// 상품 옵션 ID 목록 (','로 구분된 string)
+export type OptionIds = string;
+
+// ── 그룹코드 정보 ──────────────────────────────────────────
+export interface GroupCodeInfo {
+  group_code: string;
+  group_name: string;
+  group_type: string;       // 자동차그룹사 | 그룹사 | 그룹사 외
 }
 
-export interface ServiceOption {
-  optionId: string;
-  serviceApi: string;    // e.g. /v1/reverselabel
-  optionFormat: string;  // e.g. FIXED
-  value: string;         // e.g. limited
-  key: string;           // e.g. 1
+// ── 옵션 정보 ──────────────────────────────────────────────
+export interface OptionInfo {
+  option_id: string;
+  service_api: string;      // e.g. /v1/reverselabel
+  option_format: string;    // e.g. FIXED
+  value: string;
+  key: string;
 }
 
-export interface MappedProduct {
-  productId: string;
-  productName: string;
-  productCode: string;
-  productGroup: ProductGroup;
-  useYn: UseYn;
-  options: ServiceOption[];
+// ── 서비스 옵션 ────────────────────────────────────────────
+export interface ServiceOptions {
+  options: OptionIds;       // 상품 옵션 ID (','로 구분)
+  limit_size: number;       // 호출 제한 수
 }
 
-export interface ApiKeyFormData {
-  // 담당자 정보
-  requesterName: string;
-  email: string;
-  organization: string;
-  department: string;
-  requestDate: string;
-  expiryDate: string;
-  useYn: UseYn;
-
-  // 서비스 정보
-  serviceName: string;
-  webDomain: string;
-  iosBundleId: string;
-  androidPackageName: string;
-
-  // 애플리케이션 제한
-  appRestriction: AppRestriction;
-
-  // 상품 설정 (1:N)
-  mappedProducts: MappedProduct[];
-
-  // API KEY
-  apiKey?: string;
+// ── 서비스 옵션 아이템 (모달 체크박스용) ───────────────────
+export interface ServiceOptionsItem {
+  checkBoxId: string;       // 체크박스 id
+  optionInfo: OptionInfo;
+  check: boolean;
 }
 
-export interface ApiKeyDetail extends ApiKeyFormData {
-  keyId: string;
-  createdAt: string;
-  updatedAt: string;
+// ── 상품 아이템 (모달 체크박스용) ──────────────────────────
+export interface GoodsItem {
+  checkBoxId: string;       // 체크박스 id
+  groupCodeInfo: GroupCodeInfo;
+  check: boolean;
+  serviceOptions: ServiceOptions;
+}
+
+// ── 서비스 권한 정보 (1:N) ──────────────────────────────────
+export interface Services {
+  group_code: string;       // 상품 코드
+  approve: ApproveType;     // 상품 권한 승인 여부
+  limit_type: number;       // 사용량 제한 값
+  options: OptionIds;       // 상품 옵션 ID (','로 구분)
+}
+
+// ── 키 상세 정보 (API 응답 / 폼 데이터) ───────────────────
+export interface KeyDetailInfo {
+  api_key: string;                // KEY
+  device_id: string;
+  serial_no: string;
+  approve: ApproveType;           // 권한 승인 여부
+  u_name: string;                 // 사용자
+  u_email: string;                // 사용자 이메일
+  u_company: string;              // 사용자 소속 기관
+  u_department: string;           // 사용자 소속 부서
+  service_name: string;           // 사용 서비스명
+  create_user: string;            // 생성자
+  update_user: string;            // 수정자
+  create_date: string;            // 신청일
+  update_date: string;            // 수정일
+  due_date: string;               // 만료일 (허용일시)
+  web_service: string;            // 서비스 제한 - IP/HTTP 정보 (','로 구분)
+  ios_service: string;            // 서비스 제한 - iOS bundle 정보 (','로 구분)
+  aos_service: string;            // 서비스 제한 - Package Name 정보 (','로 구분)
+  limit_type: LimitType;          // 서비스 제한 형식 (IP/IOS/AOS)
+  ip_address: string;             // IP 주소 인증
+  token: string;                  // Mapbox Access Token 정보
+  telemetry: boolean;             // 텔레매트리 활성화 여부 (default: false)
+  services: Services[];           // 서비스 권한 정보 (1:N)
 }
