@@ -5,19 +5,18 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { GoodsItem, GroupCodeInfo } from "@/types/apiKey";
-import { v4 as uuidv4 } from "uuid";
 
 interface Props {
   open: boolean;
-  allGroupCodes: GroupCodeInfo[];   // 전체 상품 그룹 목록
+  allGroupCodes: GroupCodeInfo[];   // 백엔드에서 불러온 전체 상품 목록
   initialGoods: GoodsItem[];        // 수정 모드: 기존 매핑된 상품들 (등록이면 [])
   onConfirm: (selected: GoodsItem[]) => void;
   onClose: () => void;
 }
 
-// group_type 목록은 allGroupCodes에서 distinct하게 추출
+// group_type 목록을 allGroupCodes에서 distinct하게 추출
 function getGroupTypes(allGroupCodes: GroupCodeInfo[]): string[] {
-  return [...new Set(allGroupCodes.map((g) => g.group_type))];
+  return Array.from(new Set(allGroupCodes.map((g) => g.group_type)));
 }
 
 export default function ProductSettingModal({
@@ -31,41 +30,35 @@ export default function ProductSettingModal({
 
   const [selectedGroupType, setSelectedGroupType] = useState<string>("");
 
-  // checkBoxId 기준으로 체크 상태 관리
-  // 핵심: 등록이면 빈 Map, 수정이면 기존 GoodsItem들로 초기화
+  // key: group_code, value: GoodsItem
   const [goodsMap, setGoodsMap] = useState<Map<string, GoodsItem>>(new Map());
 
   // 모달 열릴 때마다 초기 상태 세팅
   useEffect(() => {
     if (!open) return;
 
-    // 첫 번째 group_type 기본 선택
     setSelectedGroupType(groupTypes[0] ?? "");
 
-    // 기존 매핑된 GoodsItem을 group_code 기준으로 Map화
+    // 기존 매핑된 항목을 group_code 기준으로 빠르게 조회하기 위해 Map화
     const existingMap = new Map(initialGoods.map((g) => [g.groupCodeInfo.group_code, g]));
 
-    // 전체 상품을 GoodsItem으로 변환, 기존 매핑된 항목은 check: true
+    // 백엔드 상품 목록 전체를 GoodsItem으로 변환
+    // 핵심: 기존 매핑된 항목이면 check: true + 기존 serviceOptions 유지
     const map = new Map<string, GoodsItem>();
     allGroupCodes.forEach((groupCodeInfo) => {
       const existing = existingMap.get(groupCodeInfo.group_code);
-      const item: GoodsItem = existing
-        ? { ...existing, check: true }                          // 수정 모드: 기존 항목 유지 + 체크
-        : {
-            checkBoxId: uuidv4(),                               // 등록 모드: 새 id 발급
-            groupCodeInfo,
-            check: false,
-            serviceOptions: { options: "", limit_size: 0 },
-          };
-      map.set(groupCodeInfo.group_code, item);
+      map.set(groupCodeInfo.group_code, existing
+        ? { ...existing, check: true }
+        : { groupCodeInfo, check: false, serviceOptions: { options: "", limit_size: 0 } }
+      );
     });
 
     setGoodsMap(map);
   }, [open, allGroupCodes, initialGoods, groupTypes]);
 
-  // 선택된 group_type의 상품만 필터링
+  // 현재 선택된 group_type의 상품만 필터링
   const filteredGoods = useMemo(
-    () => [...goodsMap.values()].filter((g) => g.groupCodeInfo.group_type === selectedGroupType),
+    () => Array.from(goodsMap.values()).filter((g) => g.groupCodeInfo.group_type === selectedGroupType),
     [goodsMap, selectedGroupType]
   );
 
@@ -93,13 +86,12 @@ export default function ProductSettingModal({
   };
 
   const handleConfirm = () => {
-    // check: true 인 항목만 전달
-    const selected = [...goodsMap.values()].filter((g) => g.check);
+    const selected = Array.from(goodsMap.values()).filter((g) => g.check);
     onConfirm(selected);
     onClose();
   };
 
-  const checkedCount = [...goodsMap.values()].filter((g) => g.check).length;
+  const checkedCount = Array.from(goodsMap.values()).filter((g) => g.check).length;
 
   if (!open) return null;
 
@@ -141,7 +133,6 @@ export default function ProductSettingModal({
             <div className="border rounded overflow-hidden">
               {/* 테이블 헤더 */}
               <div className="bg-gray-700 text-white grid grid-cols-[40px_1fr] text-sm">
-                {/* ② 전체선택 체크박스 */}
                 <div className="flex items-center justify-center py-2">
                   <input
                     type="checkbox"
@@ -150,7 +141,6 @@ export default function ProductSettingModal({
                     className="w-4 h-4"
                   />
                 </div>
-                {/* ③ 컬럼명 */}
                 <div className="py-2 px-3 font-medium">상품명</div>
               </div>
 
@@ -163,7 +153,7 @@ export default function ProductSettingModal({
                 ) : (
                   filteredGoods.map((item) => (
                     <label
-                      key={item.checkBoxId}
+                      key={item.groupCodeInfo.group_code}
                       className="grid grid-cols-[40px_1fr] items-center hover:bg-gray-50 cursor-pointer"
                     >
                       <div className="flex items-center justify-center py-2">
@@ -181,13 +171,12 @@ export default function ProductSettingModal({
               </div>
             </div>
 
-            {/* 선택된 상품 수 표시 */}
             <p className="text-xs text-gray-500 mt-1">
               전체 {allGroupCodes.length}개 중 {checkedCount}개 선택됨
             </p>
           </div>
 
-          {/* ④ 버튼 */}
+          {/* ③ 버튼 */}
           <div className="flex justify-center gap-2 pt-2">
             <button
               onClick={handleConfirm}
