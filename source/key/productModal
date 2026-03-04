@@ -4,91 +4,102 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Product, ProductGroup, MappedProduct } from "@/types/apiKey";
+import { GoodsItem, GroupCodeInfo } from "@/types/apiKey";
+import { v4 as uuidv4 } from "uuid";
 
 interface Props {
   open: boolean;
-  allProducts: Product[];                // 전체 상품 목록
-  initialMapped: MappedProduct[];        // 수정 모드: 기존 매핑된 상품들 (등록이면 [])
-  onConfirm: (selected: MappedProduct[]) => void;
+  allGroupCodes: GroupCodeInfo[];   // 전체 상품 그룹 목록
+  initialGoods: GoodsItem[];        // 수정 모드: 기존 매핑된 상품들 (등록이면 [])
+  onConfirm: (selected: GoodsItem[]) => void;
   onClose: () => void;
 }
 
-const GROUPS: ProductGroup[] = ["자동차그룹사", "그룹사", "그룹사 외"];
+// group_type 목록은 allGroupCodes에서 distinct하게 추출
+function getGroupTypes(allGroupCodes: GroupCodeInfo[]): string[] {
+  return [...new Set(allGroupCodes.map((g) => g.group_type))];
+}
 
 export default function ProductSettingModal({
   open,
-  allProducts,
-  initialMapped,
+  allGroupCodes,
+  initialGoods,
   onConfirm,
   onClose,
 }: Props) {
-  const [selectedGroup, setSelectedGroup] = useState<ProductGroup>("자동차그룹사");
+  const groupTypes = useMemo(() => getGroupTypes(allGroupCodes), [allGroupCodes]);
 
-  // 체크된 productId Set - 모달 열릴 때 initialMapped로 초기화
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [selectedGroupType, setSelectedGroupType] = useState<string>("");
 
-  // 모달 열릴 때마다 초기 체크 상태 세팅
-  // 핵심: 등록이면 빈 Set, 수정이면 기존 매핑된 ID들로 채움
+  // checkBoxId 기준으로 체크 상태 관리
+  // 핵심: 등록이면 빈 Map, 수정이면 기존 GoodsItem들로 초기화
+  const [goodsMap, setGoodsMap] = useState<Map<string, GoodsItem>>(new Map());
+
+  // 모달 열릴 때마다 초기 상태 세팅
   useEffect(() => {
-    if (open) {
-      setCheckedIds(new Set(initialMapped.map((p) => p.productId)));
-      setSelectedGroup("자동차그룹사");
-    }
-  }, [open, initialMapped]);
+    if (!open) return;
 
-  // 선택된 그룹의 상품만 필터링
-  const filteredProducts = useMemo(
-    () => allProducts.filter((p) => p.productGroup === selectedGroup),
-    [allProducts, selectedGroup]
+    // 첫 번째 group_type 기본 선택
+    setSelectedGroupType(groupTypes[0] ?? "");
+
+    // 기존 매핑된 GoodsItem을 group_code 기준으로 Map화
+    const existingMap = new Map(initialGoods.map((g) => [g.groupCodeInfo.group_code, g]));
+
+    // 전체 상품을 GoodsItem으로 변환, 기존 매핑된 항목은 check: true
+    const map = new Map<string, GoodsItem>();
+    allGroupCodes.forEach((groupCodeInfo) => {
+      const existing = existingMap.get(groupCodeInfo.group_code);
+      const item: GoodsItem = existing
+        ? { ...existing, check: true }                          // 수정 모드: 기존 항목 유지 + 체크
+        : {
+            checkBoxId: uuidv4(),                               // 등록 모드: 새 id 발급
+            groupCodeInfo,
+            check: false,
+            serviceOptions: { options: "", limit_size: 0 },
+          };
+      map.set(groupCodeInfo.group_code, item);
+    });
+
+    setGoodsMap(map);
+  }, [open, allGroupCodes, initialGoods, groupTypes]);
+
+  // 선택된 group_type의 상품만 필터링
+  const filteredGoods = useMemo(
+    () => [...goodsMap.values()].filter((g) => g.groupCodeInfo.group_type === selectedGroupType),
+    [goodsMap, selectedGroupType]
   );
 
-  // 전체 선택 여부
+  // 전체 선택 여부 (현재 탭 기준)
   const isAllChecked =
-    filteredProducts.length > 0 &&
-    filteredProducts.every((p) => checkedIds.has(p.productId));
+    filteredGoods.length > 0 && filteredGoods.every((g) => g.check);
 
   const handleToggleAll = () => {
-    setCheckedIds((prev) => {
-      const next = new Set(prev);
-      if (isAllChecked) {
-        filteredProducts.forEach((p) => next.delete(p.productId));
-      } else {
-        filteredProducts.forEach((p) => next.add(p.productId));
-      }
+    setGoodsMap((prev) => {
+      const next = new Map(prev);
+      filteredGoods.forEach((g) => {
+        next.set(g.groupCodeInfo.group_code, { ...g, check: !isAllChecked });
+      });
       return next;
     });
   };
 
-  const handleToggle = (productId: string) => {
-    setCheckedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(productId)) {
-        next.delete(productId);
-      } else {
-        next.add(productId);
-      }
+  const handleToggle = (group_code: string) => {
+    setGoodsMap((prev) => {
+      const next = new Map(prev);
+      const item = next.get(group_code);
+      if (item) next.set(group_code, { ...item, check: !item.check });
       return next;
     });
   };
 
   const handleConfirm = () => {
-    // 체크된 productId에 해당하는 상품들을 MappedProduct 형태로 변환
-    const selected: MappedProduct[] = allProducts
-      .filter((p) => checkedIds.has(p.productId))
-      .map((p) => {
-        // 수정 모드: 기존 매핑된 상품이면 기존 options 유지, 새로 추가된 상품은 options 빈 배열
-        const existing = initialMapped.find((m) => m.productId === p.productId);
-        return {
-          ...p,
-          useYn: existing?.useYn ?? "Y",
-          options: existing?.options ?? [],
-        };
-      });
-
+    // check: true 인 항목만 전달
+    const selected = [...goodsMap.values()].filter((g) => g.check);
     onConfirm(selected);
     onClose();
   };
+
+  const checkedCount = [...goodsMap.values()].filter((g) => g.check).length;
 
   if (!open) return null;
 
@@ -104,21 +115,21 @@ export default function ProductSettingModal({
         </div>
 
         <div className="p-4 space-y-4">
-          {/* ① 상품 그룹 선택 */}
+          {/* ① 상품 그룹 선택 (group_type 기준 라디오) */}
           <div className="flex items-center gap-4">
             <span className="text-sm font-medium w-24 shrink-0">상품 그룹 선택</span>
             <div className="flex gap-4">
-              {GROUPS.map((group) => (
-                <label key={group} className="flex items-center gap-1 cursor-pointer text-sm">
+              {groupTypes.map((type) => (
+                <label key={type} className="flex items-center gap-1 cursor-pointer text-sm">
                   <input
                     type="radio"
-                    name="productGroup"
-                    value={group}
-                    checked={selectedGroup === group}
-                    onChange={() => setSelectedGroup(group)}
+                    name="groupType"
+                    value={type}
+                    checked={selectedGroupType === type}
+                    onChange={() => setSelectedGroupType(type)}
                     className="accent-blue-600"
                   />
-                  {group}
+                  {type}
                 </label>
               ))}
             </div>
@@ -145,25 +156,25 @@ export default function ProductSettingModal({
 
               {/* 상품 행 */}
               <div className="max-h-48 overflow-y-auto divide-y">
-                {filteredProducts.length === 0 ? (
+                {filteredGoods.length === 0 ? (
                   <div className="text-center text-sm text-gray-400 py-6">
                     해당 그룹의 상품이 없습니다.
                   </div>
                 ) : (
-                  filteredProducts.map((product) => (
+                  filteredGoods.map((item) => (
                     <label
-                      key={product.productId}
+                      key={item.checkBoxId}
                       className="grid grid-cols-[40px_1fr] items-center hover:bg-gray-50 cursor-pointer"
                     >
                       <div className="flex items-center justify-center py-2">
                         <input
                           type="checkbox"
-                          checked={checkedIds.has(product.productId)}
-                          onChange={() => handleToggle(product.productId)}
+                          checked={item.check}
+                          onChange={() => handleToggle(item.groupCodeInfo.group_code)}
                           className="w-4 h-4"
                         />
                       </div>
-                      <div className="py-2 px-3 text-sm">{product.productName}</div>
+                      <div className="py-2 px-3 text-sm">{item.groupCodeInfo.group_name}</div>
                     </label>
                   ))
                 )}
@@ -172,7 +183,7 @@ export default function ProductSettingModal({
 
             {/* 선택된 상품 수 표시 */}
             <p className="text-xs text-gray-500 mt-1">
-              전체 {allProducts.length}개 중 {checkedIds.size}개 선택됨
+              전체 {allGroupCodes.length}개 중 {checkedCount}개 선택됨
             </p>
           </div>
 
