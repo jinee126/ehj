@@ -4,195 +4,217 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MappedProduct, ServiceOption } from "@/types/apiKey";
+import { GoodsItem, ServiceOptionsItem, OptionInfo } from "@/types/apiKey";
 
 interface Props {
   open: boolean;
-  product: MappedProduct | null;       // 옵션 설정할 대상 상품
-  onConfirm: (updated: MappedProduct) => void;
+  goods: GoodsItem | null;
+  onConfirm: (updated: GoodsItem) => void;
   onClose: () => void;
 }
 
-// Mock: 상품별 서비스 옵션 목록 조회
-// TODO: 실제 API 호출로 교체 - GET /api/products/{productId}/options
-async function fetchServiceOptions(productId: string): Promise<ServiceOption[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return [
-    { optionId: "o1", serviceApi: "/v1/reverselabel", optionFormat: "FIXED",    value: "limited", key: "1" },
-    { optionId: "o2", serviceApi: "/v1/search",       optionFormat: "DYNAMIC",  value: "full",    key: "2" },
-    { optionId: "o3", serviceApi: "/v1/route",        optionFormat: "FIXED",    value: "basic",   key: "3" },
-  ];
-}
-
-export default function ServiceOptionModal({ open, product, onConfirm, onClose }: Props) {
-  const [availableOptions, setAvailableOptions] = useState<ServiceOption[]>([]);
-  const [checkedOptionIds, setCheckedOptionIds] = useState<Set<string>>(new Set());
-  const [callLimit, setCallLimit] = useState<string>("1000");
+export default function ServiceOptionModal({ open, goods, onConfirm, onClose }: Props) {
+  const [optionItems, setOptionItems] = useState<ServiceOptionsItem[]>([]);
+  const [limitSize, setLimitSize] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
-  // 모달 열릴 때 옵션 목록 로드 + 기존 체크 상태 초기화
+  // 모달 열릴 때마다 옵션 목록 조회 + 기존 체크 상태 복원
   useEffect(() => {
-    if (!open || !product) return;
+    if (!open || !goods) return;
 
-    setLoading(true);
-    setCallLimit("1000");
+    // 기존 limit_size 세팅
+    setLimitSize(goods.serviceOptions.limit_size);
 
-    fetchServiceOptions(product.productId).then((options) => {
-      setAvailableOptions(options);
+    const fetchOptions = async () => {
+      setLoading(true);
+      try {
+        const resultData = await callGetAPI(
+            BASE_URL + `/management/options/${goods.groupCodeInfo.group_code}`,
+            HTTP_METHOD.GET,
+            {},
+            {}
+        );
 
-      // 수정 모드: 이미 설정된 옵션이면 체크된 상태로 초기화
-      const existingIds = new Set(product.options.map((o) => o.optionId));
-      setCheckedOptionIds(existingIds);
-      setLoading(false);
-    });
-  }, [open, product]);
+        if (resultData.resultCode === ResultCode.ET00) {
+          if (resultData.resCode === ServerResCode.OK) {
+            const allOptions = resultData.data as OptionInfo[];
 
+            // 기존에 선택된 option_id 목록 (','로 구분된 string → Set)
+            const existingIds = new Set(
+                goods.serviceOptions.options
+                    ? goods.serviceOptions.options.split(",").map((o) => o.trim())
+                    : []
+            );
+
+            // 전체 옵션을 ServiceOptionsItem으로 변환
+            // 기존에 선택된 옵션이면 check: true
+            const items: ServiceOptionsItem[] = allOptions.map((optionInfo) => ({
+              optionInfo,
+              check: existingIds.has(optionInfo.option_id),
+            }));
+
+            setOptionItems(items);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOptions();
+  }, [open, goods]);
+
+  // 전체 선택 여부
   const isAllChecked =
-    availableOptions.length > 0 &&
-    availableOptions.every((o) => checkedOptionIds.has(o.optionId));
+      optionItems.length > 0 && optionItems.every((o) => o.check);
 
   const handleToggleAll = () => {
-    setCheckedOptionIds((prev) => {
-      const next = new Set(prev);
-      if (isAllChecked) {
-        availableOptions.forEach((o) => next.delete(o.optionId));
-      } else {
-        availableOptions.forEach((o) => next.add(o.optionId));
-      }
-      return next;
-    });
+    setOptionItems((prev) =>
+        prev.map((o) => ({ ...o, check: !isAllChecked }))
+    );
   };
 
-  const handleToggle = (optionId: string) => {
-    setCheckedOptionIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(optionId)) next.delete(optionId);
-      else next.add(optionId);
-      return next;
-    });
+  const handleToggle = (option_id: string) => {
+    setOptionItems((prev) =>
+        prev.map((o) =>
+            o.optionInfo.option_id === option_id ? { ...o, check: !o.check } : o
+        )
+    );
   };
 
   const handleConfirm = () => {
-    if (!product) return;
+    if (!goods) return;
 
-    const selectedOptions = availableOptions.filter((o) =>
-      checkedOptionIds.has(o.optionId)
-    );
+    // 체크된 option_id들을 ','로 join해서 저장
+    const selectedIds = optionItems
+        .filter((o) => o.check)
+        .map((o) => o.optionInfo.option_id)
+        .join(",");
 
-    onConfirm({ ...product, options: selectedOptions });
+    onConfirm({
+      ...goods,
+      serviceOptions: {
+        options:    selectedIds,
+        limit_size: limitSize,
+      },
+    });
     onClose();
   };
 
-  if (!open || !product) return null;
+  if (!open || !goods) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white w-[540px] rounded shadow-lg">
-        {/* Header */}
-        <div className="flex items-center justify-between bg-gray-700 text-white px-4 py-2">
-          <span className="font-semibold">서비스 옵션 설정</span>
-          <button onClick={onClose} className="text-white hover:text-gray-300 text-lg">
-            ✕
-          </button>
-        </div>
-
-        <div className="p-4 space-y-4">
-          {/* ① 상품 정보 */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <span className="text-sm w-20 shrink-0 text-gray-600">상품 그룹명</span>
-              <input
-                type="text"
-                value={product.productName}
-                readOnly
-                className="flex-1 border rounded px-2 py-1 text-sm bg-gray-50 text-gray-500"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm w-20 shrink-0 text-gray-600">호출 제한</span>
-              <input
-                type="number"
-                value={callLimit}
-                onChange={(e) => setCallLimit(e.target.value)}
-                className="flex-1 border rounded px-2 py-1 text-sm"
-                placeholder="호출 횟수 입력"
-              />
-            </div>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white w-[540px] rounded shadow-lg">
+          {/* Header */}
+          <div className="flex items-center justify-between bg-gray-700 text-white px-4 py-2">
+            <span className="font-semibold">서비스 옵션 설정</span>
+            <button onClick={onClose} className="text-white hover:text-gray-300 text-lg">
+              ✕
+            </button>
           </div>
 
-          {/* 서비스 옵션 테이블 */}
-          <div>
-            <p className="text-sm font-medium mb-1">서비스 옵션</p>
-            <div className="border rounded overflow-hidden">
-              {/* 테이블 헤더 */}
-              <div className="bg-gray-700 text-white grid grid-cols-[40px_1fr_100px_80px_60px] text-sm">
-                {/* ② 전체선택 체크박스 */}
-                <div className="flex items-center justify-center py-2">
-                  <input
-                    type="checkbox"
-                    checked={isAllChecked}
-                    onChange={handleToggleAll}
-                    className="w-4 h-4"
-                    disabled={loading}
-                  />
-                </div>
-                {/* ③ 컬럼명 */}
-                <div className="py-2 px-2 font-medium">서비스 API</div>
-                <div className="py-2 px-2 font-medium">옵션 형식</div>
-                <div className="py-2 px-2 font-medium">값</div>
-                <div className="py-2 px-2 font-medium">키</div>
+          <div className="p-4 space-y-4">
+            {/* ① 상품 정보 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-sm w-20 shrink-0 text-gray-600">상품 그룹명</span>
+                <input
+                    type="text"
+                    value={goods.groupCodeInfo.group_name}
+                    readOnly
+                    className="flex-1 border rounded px-2 py-1 text-sm bg-gray-50 text-gray-500"
+                />
               </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm w-20 shrink-0 text-gray-600">호출 제한</span>
+                <input
+                    type="number"
+                    value={limitSize}
+                    onChange={(e) => setLimitSize(Number(e.target.value))}
+                    className="flex-1 border rounded px-2 py-1 text-sm"
+                    placeholder="호출 횟수 입력"
+                />
+              </div>
+            </div>
 
-              {/* 옵션 행 */}
-              <div className="max-h-48 overflow-y-auto divide-y">
-                {loading ? (
-                  <div className="text-center text-sm text-gray-400 py-6">로딩 중...</div>
-                ) : availableOptions.length === 0 ? (
-                  <div className="text-center text-sm text-gray-400 py-6">
-                    설정 가능한 옵션이 없습니다.
+            {/* ② 서비스 옵션 테이블 */}
+            <div>
+              <p className="text-sm font-medium mb-1">서비스 옵션</p>
+              <div className="border rounded overflow-hidden">
+                {/* 테이블 헤더 */}
+                <div className="bg-gray-700 text-white grid grid-cols-[40px_1fr_100px_80px_60px] text-sm">
+                  <div className="flex items-center justify-center py-2">
+                    <input
+                        type="checkbox"
+                        checked={isAllChecked}
+                        onChange={handleToggleAll}
+                        className="w-4 h-4"
+                        disabled={loading}
+                    />
                   </div>
-                ) : (
-                  availableOptions.map((option) => (
-                    <label
-                      key={option.optionId}
-                      className="grid grid-cols-[40px_1fr_100px_80px_60px] items-center hover:bg-gray-50 cursor-pointer"
-                    >
-                      <div className="flex items-center justify-center py-2">
-                        <input
-                          type="checkbox"
-                          checked={checkedOptionIds.has(option.optionId)}
-                          onChange={() => handleToggle(option.optionId)}
-                          className="w-4 h-4"
-                        />
-                      </div>
-                      <div className="py-2 px-2 text-sm truncate">{option.serviceApi}</div>
-                      <div className="py-2 px-2 text-sm">{option.optionFormat}</div>
-                      <div className="py-2 px-2 text-sm">{option.value}</div>
-                      <div className="py-2 px-2 text-sm">{option.key}</div>
-                    </label>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+                  <div className="py-2 px-2 font-medium">서비스 API</div>
+                  <div className="py-2 px-2 font-medium">옵션 형식</div>
+                  <div className="py-2 px-2 font-medium">값</div>
+                  <div className="py-2 px-2 font-medium">키</div>
+                </div>
 
-          {/* ④ 버튼 */}
-          <div className="flex justify-center gap-2 pt-2">
-            <button
-              onClick={handleConfirm}
-              className="px-6 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
-            >
-              선택 완료
-            </button>
-            <button
-              onClick={onClose}
-              className="px-6 py-1.5 bg-white border text-sm rounded hover:bg-gray-50"
-            >
-              취소
-            </button>
+                {/* 옵션 행 */}
+                <div className="max-h-48 overflow-y-auto divide-y">
+                  {loading ? (
+                      <div className="text-center text-sm text-gray-400 py-6">로딩 중...</div>
+                  ) : optionItems.length === 0 ? (
+                      <div className="text-center text-sm text-gray-400 py-6">
+                        설정 가능한 옵션이 없습니다.
+                      </div>
+                  ) : (
+                      optionItems.map((item) => (
+                          <label
+                              key={item.optionInfo.option_id}
+                              className="grid grid-cols-[40px_1fr_100px_80px_60px] items-center hover:bg-gray-50 cursor-pointer"
+                          >
+                            <div className="flex items-center justify-center py-2">
+                              <input
+                                  type="checkbox"
+                                  checked={item.check}
+                                  onChange={() => handleToggle(item.optionInfo.option_id)}
+                                  className="w-4 h-4"
+                              />
+                            </div>
+                            <div className="py-2 px-2 text-sm truncate">{item.optionInfo.service_api}</div>
+                            <div className="py-2 px-2 text-sm">{item.optionInfo.option_format}</div>
+                            <div className="py-2 px-2 text-sm">{item.optionInfo.value}</div>
+                            <div className="py-2 px-2 text-sm">{item.optionInfo.key}</div>
+                          </label>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 mt-1">
+                {optionItems.filter((o) => o.check).length}개 선택됨
+              </p>
+            </div>
+
+            {/* ③ 버튼 */}
+            <div className="flex justify-center gap-2 pt-2">
+              <button
+                  onClick={handleConfirm}
+                  className="px-6 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+              >
+                선택 완료
+              </button>
+              <button
+                  onClick={onClose}
+                  className="px-6 py-1.5 bg-white border text-sm rounded hover:bg-gray-50"
+              >
+                취소
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
   );
 }

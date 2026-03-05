@@ -23,7 +23,7 @@ const defaultForm: Partial<KeyDetailInfo> = {
   approve:      "",
   u_name:       "",
   u_email:      "",
-  u_company:    "",a
+  u_company:    "",
   u_department: "",
   service_name: "",
   due_date:     "",
@@ -337,41 +337,45 @@ export default function ApiKeyForm({ id }: Props) {
               </div>
 
               <div className="border rounded overflow-hidden">
-                <div className="bg-gray-700 text-white grid grid-cols-[1fr_1fr_80px] text-xs">
-                  <div className="py-2 px-2">상품 그룹</div>
-                  <div className="py-2 px-2">상품 그룹명</div>
-                  <div className="py-2 px-2 text-center">옵션여부</div>
-                </div>
-
-                <div className="max-h-40 overflow-y-auto divide-y">
+                <table className="w-full text-xs">
+                  <thead>
+                  <tr className="bg-gray-700 text-white">
+                    <th className="py-2 px-2 text-left font-medium">상품 그룹</th>
+                    <th className="py-2 px-2 text-left font-medium">상품 그룹명</th>
+                    <th className="py-2 px-2 text-center font-medium w-20">옵션여부</th>
+                  </tr>
+                  </thead>
+                  <tbody className="divide-y max-h-40 overflow-y-auto">
                   {goodsList.length === 0 ? (
-                      <div className="text-center text-xs text-gray-400 py-4">
-                        상품을 추가하세요.
-                      </div>
+                      <tr>
+                        <td colSpan={3} className="text-center text-gray-400 py-4">
+                          상품을 추가하세요.
+                        </td>
+                      </tr>
                   ) : (
                       goodsList.map((goods) => (
-                          <button
+                          <tr
                               key={goods.groupCodeInfo.group_code}
-                              type="button"
-                              onClick={() => handleOpenServiceOption(goods)}
-                              className="w-full grid grid-cols-[1fr_1fr_80px] items-center hover:bg-gray-50 text-left"
+                              onDoubleClick={() => handleOpenServiceOption(goods)}
+                              className="cursor-pointer hover:bg-gray-50"
                           >
-                            <div className="py-2 px-2 text-xs text-blue-600">
+                            <td className="py-2 px-2 text-xs text-blue-600">
                               {goods.groupCodeInfo.group_type}
-                            </div>
-                            <div className="py-2 px-2 text-xs text-blue-600">
+                            </td>
+                            <td className="py-2 px-2 text-xs text-blue-600">
                               {goods.groupCodeInfo.group_name}
-                            </div>
-                            <div className="py-2 px-2 text-xs text-center">
+                            </td>
+                            <td className="py-2 px-2 text-xs text-center">
                               {goods.serviceOptions.options
                                   ? <span className="text-green-600">✓</span>
                                   : <span className="text-gray-400">-</span>
                               }
-                            </div>
-                          </button>
+                            </td>
+                          </tr>
                       ))
                   )}
-                </div>
+                  </tbody>
+                </table>
               </div>
             </div>
           </section>
