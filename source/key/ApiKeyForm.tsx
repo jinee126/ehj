@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyDetailInfo, GoodsItem, GroupCodeInfo } from "@/types/apiKey";
+import { KeyDetailInfo, GoodsItem, GroupCodeInfo, Services } from "@/types/apiKey";
 import { useCommonCode } from "@/hooks/useCommonCode";
 import { saveApiKey } from "@/hooks/useApiKeyData";
 import ProductSettingModal from "./ProductSettingModal";
@@ -26,6 +26,7 @@ const defaultForm: Partial<KeyDetailInfo> = {
   u_company:    "",
   u_department: "",
   service_name: "",
+  create_date:  "",
   due_date:     "",
   web_service:  "",
   ios_service:  "",
@@ -35,7 +36,7 @@ const defaultForm: Partial<KeyDetailInfo> = {
   token:        "",
   telemetry:    false,
   api_key:      "",
-  services:     [],
+  services:     [],  // 상품코드 리스트 - Single Source of Truth
 };
 
 export default function ApiKeyForm({ id }: Props) {
@@ -52,9 +53,8 @@ export default function ApiKeyForm({ id }: Props) {
   const [allGroupCodes, setAllGroupCodes] = useState<GroupCodeInfo[]>([]);
   const [groupCodesLoading, setGroupCodesLoading] = useState(false);
 
-  // ── 폼 상태 ───────────────────────────────────────────────
+  // ── 폼 상태 (services[]가 상품코드 단일 원본) ─────────────
   const [form, setForm] = useState<Partial<KeyDetailInfo>>(defaultForm);
-  const [goodsList, setGoodsList] = useState<GoodsItem[]>([]);
 
   // ── 로딩 상태 ─────────────────────────────────────────────
   const [detailLoading, setDetailLoading] = useState(false);
@@ -98,7 +98,7 @@ export default function ApiKeyForm({ id }: Props) {
   // ── 상세 조회 (수정 모드 + allGroupCodes 로딩 완료 후) ────
   useEffect(() => {
     if (detailPageMode !== PAGE_MODE.EDIT) return;
-    if (allGroupCodes.length === 0) return;  // groupCodes 준비 후 실행
+    if (allGroupCodes.length === 0) return;
 
     const fetchDetail = async () => {
       setDetailLoading(true);
@@ -112,27 +112,8 @@ export default function ApiKeyForm({ id }: Props) {
         if (resultData.resultCode === ResultCode.ET00) {
           if (resultData.resCode === ServerResCode.OK) {
             const detailData = resultData.data as KeyDetailInfo;
-
-            // 폼 데이터 세팅
+            // services[] 포함해서 form에 그대로 세팅
             setForm({ ...detailData });
-
-            // services[] → GoodsItem[] 변환 (모달 체크 상태 복원)
-            const mapped: GoodsItem[] = detailData.services.map((s) => {
-              const groupCodeInfo = allGroupCodes.find((g) => g.group_code === s.group_code);
-              return {
-                groupCodeInfo: groupCodeInfo ?? {
-                  group_code: s.group_code,
-                  group_name: s.group_code,
-                  group_type: "",
-                },
-                check: true,
-                serviceOptions: {
-                  options:    s.options,
-                  limit_size: s.limit_type,
-                },
-              };
-            });
-            setGoodsList(mapped);
           }
         }
       } catch (e) {
@@ -158,32 +139,90 @@ export default function ApiKeyForm({ id }: Props) {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // 허용기간 선택 → due_date 자동 계산
+  const dateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const monthCode = e.target.value;
+    if (!monthCode) return;
+
+    const base = form.create_date ? new Date(form.create_date) : new Date();
+
+    switch (monthCode) {
+      case "3":  base.setMonth(base.getMonth() + 3);       break;
+      case "6":  base.setMonth(base.getMonth() + 6);       break;
+      case "12": base.setFullYear(base.getFullYear() + 1); break;
+    }
+
+    setForm((prev) => ({ ...prev, due_date: formatDate(base) }));
+  };
+
+  /** 상품 설정 모달 열기 - form.services → GoodsItem[] 변환해서 전달 */
+  const toInitialGoods = (): GoodsItem[] => {
+    return (form.services ?? []).map((s) => ({
+      groupCodeInfo: allGroupCodes.find((g) => g.group_code === s.group_code) ?? {
+        group_code: s.group_code,
+        group_name: s.group_code,
+        group_type: "",
+      },
+      check: true,
+      serviceOptions: {
+        options:    s.options,
+        limit_size: s.limit_type,
+      },
+    }));
+  };
+
+  /** 상품 설정 모달 선택 완료 - GoodsItem[] → services[] 변환해서 form 업데이트 */
   const handleProductConfirm = (selected: GoodsItem[]) => {
-    setGoodsList(selected);
-  };
-
-  const handleOpenServiceOption = (goods: GoodsItem) => {
-    setServiceOptionModal({ open: true, goods });
-  };
-
-  const handleServiceOptionConfirm = (updated: GoodsItem) => {
-    setGoodsList((prev) =>
-        prev.map((g) =>
-            g.groupCodeInfo.group_code === updated.groupCodeInfo.group_code ? updated : g
-        )
-    );
-  };
-
-  const handleSave = async () => {
-    const payload: KeyDetailInfo = {
-      ...(form as KeyDetailInfo),
-      services: goodsList.map((g) => ({
+    setForm((prev) => ({
+      ...prev,
+      services: selected.map((g) => ({
         group_code: g.groupCodeInfo.group_code,
-        approve:    form.approve ?? "",
+        approve:    prev.approve ?? "",
         limit_type: g.serviceOptions.limit_size,
         options:    g.serviceOptions.options,
       })),
-    };
+    }));
+  };
+
+  /** 상품 행 더블클릭 - Services → GoodsItem 변환해서 서비스 옵션 모달 열기 */
+  const handleOpenServiceOption = (service: Services) => {
+    const groupCodeInfo = allGroupCodes.find((g) => g.group_code === service.group_code);
+    setServiceOptionModal({
+      open: true,
+      goods: {
+        groupCodeInfo: groupCodeInfo ?? {
+          group_code: service.group_code,
+          group_name: service.group_code,
+          group_type: "",
+        },
+        check: true,
+        serviceOptions: {
+          options:    service.options,
+          limit_size: service.limit_type,
+        },
+      },
+    });
+  };
+
+  /** 서비스 옵션 모달 선택 완료 - form.services에서 해당 상품 options/limit_type 업데이트 */
+  const handleServiceOptionConfirm = (updated: GoodsItem) => {
+    setForm((prev) => ({
+      ...prev,
+      services: (prev.services ?? []).map((s) =>
+          s.group_code === updated.groupCodeInfo.group_code
+              ? {
+                ...s,
+                options:    updated.serviceOptions.options,
+                limit_type: updated.serviceOptions.limit_size,
+              }
+              : s
+      ),
+    }));
+  };
+
+  /** 저장 */
+  const handleSave = async () => {
+    const payload = form as KeyDetailInfo;
 
     try {
       await saveApiKey(detailPageMode === PAGE_MODE.EDIT ? id : null, payload);
@@ -225,19 +264,36 @@ export default function ApiKeyForm({ id }: Props) {
                 </div>
             ))}
 
-            {/* 허용일시 - MONTH 공통코드 */}
+            {/* 신청일시 - 등록 시 현재일 자동 세팅, 읽기 전용 */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm w-24 shrink-0 text-right">신청일시</label>
+              <input
+                  type="text"
+                  value={form.create_date ?? ""}
+                  readOnly
+                  className="flex-1 border rounded px-2 py-1 text-sm bg-gray-50 text-gray-500"
+              />
+            </div>
+
+            {/* 허용일시 - MONTH 공통코드 선택 → due_date 자동 계산 */}
             <div className="flex items-center gap-2">
               <label className="text-sm w-24 shrink-0 text-right">허용일시 *</label>
               <select
-                  value={form.due_date ?? ""}
-                  onChange={(e) => handleFormChange("due_date", e.target.value)}
-                  className="flex-1 border rounded px-2 py-1 text-sm"
+                  onChange={dateChange}
+                  className="w-32 border rounded px-2 py-1 text-sm"
               >
                 <option value="">허용기간선택</option>
                 {monthCodes.map((c) => (
                     <option key={c.code} value={c.code}>{c.codeName}</option>
                 ))}
               </select>
+              <input
+                  type="text"
+                  value={form.due_date ?? ""}
+                  readOnly
+                  placeholder="yyyy-mm-dd"
+                  className="flex-1 border rounded px-2 py-1 text-sm bg-gray-50 text-gray-500"
+              />
             </div>
 
             {/* 사용여부 - USEYN 공통코드 */}
@@ -274,7 +330,14 @@ export default function ApiKeyForm({ id }: Props) {
                 <button
                     type="button"
                     className="px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
-                    onClick={() => navigator.clipboard.writeText(form.api_key ?? "")}
+                    onClick={async () => {
+                      if (!form.api_key) {
+                        alert("복사할 API KEY가 없습니다.");
+                        return;
+                      }
+                      await navigator.clipboard.writeText(form.api_key);
+                      alert("API KEY가 복사되었습니다.");
+                    }}
                 >
                   KEY 복사
                 </button>
@@ -323,14 +386,15 @@ export default function ApiKeyForm({ id }: Props) {
               </div>
             </div>
 
-            {/* 상품 설정 */}
+            {/* 상품 설정 - form.services[] 직접 렌더링 */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <h3 className="font-medium text-sm">상품 설정 *</h3>
                 <button
                     type="button"
                     onClick={() => setProductModalOpen(true)}
-                    className="px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
+                    disabled={detailLoading}
+                    className="px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700 disabled:opacity-50"
                 >
                   추가/삭제
                 </button>
@@ -345,34 +409,40 @@ export default function ApiKeyForm({ id }: Props) {
                     <th className="py-2 px-2 text-center font-medium w-20">옵션여부</th>
                   </tr>
                   </thead>
-                  <tbody className="divide-y max-h-40 overflow-y-auto">
-                  {goodsList.length === 0 ? (
+                  <tbody className="divide-y">
+                  {(form.services ?? []).length === 0 ? (
                       <tr>
                         <td colSpan={3} className="text-center text-gray-400 py-4">
                           상품을 추가하세요.
                         </td>
                       </tr>
                   ) : (
-                      goodsList.map((goods) => (
-                          <tr
-                              key={goods.groupCodeInfo.group_code}
-                              onDoubleClick={() => handleOpenServiceOption(goods)}
-                              className="cursor-pointer hover:bg-gray-50"
-                          >
-                            <td className="py-2 px-2 text-xs text-blue-600">
-                              {goods.groupCodeInfo.group_type}
-                            </td>
-                            <td className="py-2 px-2 text-xs text-blue-600">
-                              {goods.groupCodeInfo.group_name}
-                            </td>
-                            <td className="py-2 px-2 text-xs text-center">
-                              {goods.serviceOptions.options
-                                  ? <span className="text-green-600">✓</span>
-                                  : <span className="text-gray-400">-</span>
-                              }
-                            </td>
-                          </tr>
-                      ))
+                      (form.services ?? []).map((service) => {
+                        const groupCodeInfo = allGroupCodes.find(
+                            (g) => g.group_code === service.group_code
+                        );
+                        return (
+                            <tr
+                                key={service.group_code}
+                                onDoubleClick={() => handleOpenServiceOption(service)}
+                                className="cursor-pointer hover:bg-gray-50"
+                                title="더블클릭 시 서비스 옵션 설정"
+                            >
+                              <td className="py-2 px-2 text-blue-600">
+                                {groupCodeInfo?.group_type ?? service.group_code}
+                              </td>
+                              <td className="py-2 px-2 text-blue-600">
+                                {groupCodeInfo?.group_name ?? service.group_code}
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                {service.options
+                                    ? <span className="text-green-600">✓</span>
+                                    : <span className="text-gray-400">-</span>
+                                }
+                              </td>
+                            </tr>
+                        );
+                      })
                   )}
                   </tbody>
                 </table>
@@ -400,18 +470,21 @@ export default function ApiKeyForm({ id }: Props) {
         </div>
 
         {/* ── 모달 ────────────────────────────────────── */}
+
+        {/* 상품 설정 모달 */}
         <ProductSettingModal
             open={productModalOpen}
             allGroupCodes={allGroupCodes}
-            initialGoods={goodsList}
-            onConfirm={handleProductConfirm}
+            initialGoods={toInitialGoods()}   // form.services → GoodsItem[] 변환
+            onConfirm={handleProductConfirm}  // GoodsItem[] → services[] 변환 후 form 업데이트
             onClose={() => setProductModalOpen(false)}
         />
 
+        {/* 서비스 옵션 모달 */}
         <ServiceOptionModal
             open={serviceOptionModal.open}
             goods={serviceOptionModal.goods}
-            onConfirm={handleServiceOptionConfirm}
+            onConfirm={handleServiceOptionConfirm}  // form.services에서 해당 상품 업데이트
             onClose={() => setServiceOptionModal({ open: false, goods: null })}
         />
       </div>
