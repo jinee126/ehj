@@ -23,7 +23,7 @@ const defaultForm: Partial<KeyDetailInfo> = {
   approve:      "",
   u_name:       "",
   u_email:      "",
-  u_company:    "",
+  u_company:    "",a
   u_department: "",
   service_name: "",
   due_date:     "",
@@ -39,7 +39,9 @@ const defaultForm: Partial<KeyDetailInfo> = {
 };
 
 export default function ApiKeyForm({ id }: Props) {
-  const isEditMode = id !== PAGE_MODE.REG;
+  const [detailPageMode, setDetailPageMode] = useState(
+      id === PAGE_MODE.REG ? PAGE_MODE.REG : PAGE_MODE.EDIT
+  );
 
   // ── 공통코드 ──────────────────────────────────────────────
   const { codes: useYnCodes }     = useCommonCode("USEYN");
@@ -57,7 +59,7 @@ export default function ApiKeyForm({ id }: Props) {
   // ── 로딩 상태 ─────────────────────────────────────────────
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // ── 전체 상품 목록 조회 ───────────────────────────────────
+  // ── 전체 상품 목록 조회 (등록/수정 공통) ─────────────────
   useEffect(() => {
     const fetchGroupCodes = async () => {
       setGroupCodesLoading(true);
@@ -83,9 +85,19 @@ export default function ApiKeyForm({ id }: Props) {
     fetchGroupCodes();
   }, []);
 
+  // ── 등록 모드: 신청일 현재일로 초기 세팅 ─────────────────
+  useEffect(() => {
+    if (detailPageMode === PAGE_MODE.REG) {
+      setForm((prev) => ({
+        ...prev,
+        create_date: formatDate(new Date()),
+      }));
+    }
+  }, [detailPageMode]);
+
   // ── 상세 조회 (수정 모드 + allGroupCodes 로딩 완료 후) ────
   useEffect(() => {
-    if (!isEditMode) return;
+    if (detailPageMode !== PAGE_MODE.EDIT) return;
     if (allGroupCodes.length === 0) return;  // groupCodes 준비 후 실행
 
     const fetchDetail = async () => {
@@ -131,7 +143,7 @@ export default function ApiKeyForm({ id }: Props) {
     };
 
     fetchDetail();
-  }, [id, isEditMode, allGroupCodes]);
+  }, [detailPageMode, allGroupCodes]);
 
   // ── 모달 상태 ─────────────────────────────────────────────
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -174,8 +186,8 @@ export default function ApiKeyForm({ id }: Props) {
     };
 
     try {
-      await saveApiKey(isEditMode ? id : null, payload);
-      alert(isEditMode ? "수정되었습니다." : "등록되었습니다.");
+      await saveApiKey(detailPageMode === PAGE_MODE.EDIT ? id : null, payload);
+      alert(detailPageMode === PAGE_MODE.EDIT ? "수정되었습니다." : "등록되었습니다.");
     } catch (e) {
       alert("저장 실패");
     }
@@ -188,7 +200,7 @@ export default function ApiKeyForm({ id }: Props) {
   return (
       <div className="p-6 bg-white max-w-5xl mx-auto">
         <h1 className="text-xl font-bold mb-6">
-          ■ API KEY {isEditMode ? "수정" : "등록"}
+          ■ API KEY {detailPageMode === PAGE_MODE.EDIT ? "수정" : "등록"}
         </h1>
 
         <div className="grid grid-cols-2 gap-6">
