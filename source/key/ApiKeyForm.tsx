@@ -147,21 +147,26 @@ export default function ApiKeyForm({ id }: Props) {
   // 상품 설정 모달 선택 완료
   // 기존에 있던 상품이면 options/limit_type 유지, 새 상품이면 초기값
   const handleProductConfirm = (selected: GoodsItem[]) => {
-    setForm((prev) => ({
-      ...prev,
-      services: selected.map((g) => {
-        const existing = (prev.services ?? []).find(
-            (s) => s.group_code === g.group_code
-        );
-        return existing ?? {
+    setForm((prev) => {
+      const prevServices = prev.services ?? [];
+
+      const nextServices: Services[] = selected.map((g): Services => {
+        // 기존에 있던 상품이면 options/limit_type 유지
+        const existing = prevServices.find((s) => s.group_code === g.group_code);
+        if (existing) return existing;
+
+        // 신규 추가된 상품 - Services 타입에 맞게 초기값 세팅
+        return {
           group_code: g.group_code,
           group_name: g.group_name,
           approve:    prev.approve ?? "",
           limit_type: 0,
           options:    "",
         };
-      }),
-    }));
+      });
+
+      return { ...prev, services: nextServices };
+    });
   };
 
   // 상품 행 더블클릭 → 서비스 옵션 모달 열기
