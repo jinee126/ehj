@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyDetailInfo, ProductInfo, GoodsItem, Services, ServiceOptions } from "@/types/apiKey";
+import { KeyDetailInfo, ProductInfo, GoodsItem, Services, ServiceOptionsItem } from "@/types/apiKey";
 import { useCommonCode } from "@/hooks/useCommonCode";
 import { saveApiKey } from "@/hooks/useApiKeyData";
 import ProductSettingModal from "./ProductSettingModal";
@@ -165,24 +165,26 @@ export default function ApiKeyForm({ id }: Props) {
 
   // 상품 행 더블클릭 → Services에서 ProductInfo 생성해서 서비스 옵션 모달 열기
   const handleOpenServiceOption = (service: Services) => {
-    // allGoods에서 group_code 기준으로 ProductInfo 찾기
-    const found = allGoods.find((g) => g.group_code === service.group_code);
-
     const productInfo: ProductInfo = {
       service_group:      service.group_code,
-      service_group_name: found?.group_name ?? service.group_code,  // 못 찾으면 코드로 대체
+      service_group_name: service.group_name,
     };
-
-    setServiceOptionModal({ open: true, productInfo });
+    setServiceOptionModal({
+      open:      true,
+      productInfo,
+    });
   };
 
-  // 서비스 옵션 모달 선택 완료 → form.services 업데이트
-  const handleServiceOptionConfirm = (groupCode: string, serviceOptions: ServiceOptions) => {
+  // 서비스 옵션 모달 선택 완료 → ServiceOptionsItem[] → "1,2" 변환 후 form.services 업데이트
+  const handleServiceOptionConfirm = (groupCode: string, selected: ServiceOptionsItem[]) => {
+    // ServiceOptionsItem[] → option_id[] → "1,2" 형태로 변환
+    const optionIds = selected.map((o) => o.optionInfo.option_id).join(",");
+
     setForm((prev) => ({
       ...prev,
       services: (prev.services ?? []).map((s) =>
           s.group_code === groupCode
-              ? { ...s, options: serviceOptions.options, limit_type: serviceOptions.limit_size }
+              ? { ...s, options: optionIds }
               : s
       ),
     }));
