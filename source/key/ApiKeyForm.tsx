@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyDetailInfo, GoodsItem, Services, ServiceOptions } from "@/types/apiKey";
+import { KeyDetailInfo, ProductInfo, GoodsItem, Services, ServiceOptions } from "@/types/apiKey";
 import { useCommonCode } from "@/hooks/useCommonCode";
 import { saveApiKey } from "@/hooks/useApiKeyData";
 import ProductSettingModal from "./ProductSettingModal";
@@ -52,11 +52,11 @@ export default function ApiKeyForm({ id }: Props) {
         );
         if (resultData.resultCode === ResultCode.ET00) {
           if (resultData.resCode === ServerResCode.OK) {
-            // 백엔드 응답을 GoodsItem 형태로 변환
-            const goods: GoodsItem[] = (resultData.data as any[]).map((d) => ({
-              group_code: d.group_code,
-              group_name: d.group_name,
-              check: false,
+            // ProductInfo[] → GoodsItem[] 변환
+            const goods: GoodsItem[] = (resultData.data as ProductInfo[]).map((p) => ({
+              group_code: p.service_group,
+              group_name: p.service_group_name,
+              check:      false,
             }));
             setAllGoods(goods);
           }
@@ -111,9 +111,8 @@ export default function ApiKeyForm({ id }: Props) {
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [serviceOptionModal, setServiceOptionModal] = useState<{
     open: boolean;
-    groupCode: string;
-    groupName: string;
-  }>({ open: false, groupCode: "", groupName: "" });
+    productInfo: ProductInfo | null;
+  }>({ open: false, productInfo: null });
 
   // ── 핸들러 ───────────────────────────────────────────────
 
@@ -147,34 +146,32 @@ export default function ApiKeyForm({ id }: Props) {
   // 상품 설정 모달 선택 완료
   // 기존에 있던 상품이면 options/limit_type 유지, 새 상품이면 초기값
   const handleProductConfirm = (selected: GoodsItem[]) => {
-    setForm((prev) => {
-      const prevServices = prev.services ?? [];
-
-      const nextServices: Services[] = selected.map((g): Services => {
-        // 기존에 있던 상품이면 options/limit_type 유지
-        const existing = prevServices.find((s) => s.group_code === g.group_code);
-        if (existing) return existing;
-
-        // 신규 추가된 상품 - Services 타입에 맞게 초기값 세팅
-        return {
+    setForm((prev) => ({
+      ...prev,
+      services: selected.map((g) => {
+        const existing = (prev.services ?? []).find(
+            (s) => s.group_code === g.group_code
+        );
+        return existing ?? {
           group_code: g.group_code,
           group_name: g.group_name,
           approve:    prev.approve ?? "",
           limit_type: 0,
           options:    "",
         };
-      });
-
-      return { ...prev, services: nextServices };
-    });
+      }),
+    }));
   };
 
-  // 상품 행 더블클릭 → 서비스 옵션 모달 열기
+  // 상품 행 더블클릭 → Services에서 ProductInfo 생성해서 서비스 옵션 모달 열기
   const handleOpenServiceOption = (service: Services) => {
+    const productInfo: ProductInfo = {
+      service_group:      service.group_code,
+      service_group_name: service.group_name,
+    };
     setServiceOptionModal({
       open:      true,
-      groupCode: service.group_code,
-      groupName: service.group_name,
+      productInfo,
     });
   };
 
@@ -442,13 +439,14 @@ export default function ApiKeyForm({ id }: Props) {
         {/* 서비스 옵션 모달 */}
         <ServiceOptionModal
             open={serviceOptionModal.open}
-            groupCode={serviceOptionModal.groupCode}
-            groupName={serviceOptionModal.groupName}
+            productInfo={serviceOptionModal.productInfo}
             initialOptions={
-                form.services?.find((s) => s.group_code === serviceOptionModal.groupCode)?.options ?? ""
+                form.services?.find(
+                    (s) => s.group_code === serviceOptionModal.productInfo?.service_group
+                )?.options ?? ""
             }
             onConfirm={handleServiceOptionConfirm}
-            onClose={() => setServiceOptionModal({ open: false, groupCode: "", groupName: "" })}
+            onClose={() => setServiceOptionModal({ open: false, productInfo: null })}
         />
       </div>
   );
