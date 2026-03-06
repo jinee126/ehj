@@ -165,14 +165,15 @@ export default function ApiKeyForm({ id }: Props) {
 
   // 상품 행 더블클릭 → Services에서 ProductInfo 생성해서 서비스 옵션 모달 열기
   const handleOpenServiceOption = (service: Services) => {
+    // allGoods에서 group_code 기준으로 ProductInfo 찾기
+    const found = allGoods.find((g) => g.group_code === service.group_code);
+
     const productInfo: ProductInfo = {
       service_group:      service.group_code,
-      service_group_name: service.group_name,
+      service_group_name: found?.group_name ?? service.group_code,  // 못 찾으면 코드로 대체
     };
-    setServiceOptionModal({
-      open:      true,
-      productInfo,
-    });
+
+    setServiceOptionModal({ open: true, productInfo });
   };
 
   // 서비스 옵션 모달 선택 완료 → form.services 업데이트
