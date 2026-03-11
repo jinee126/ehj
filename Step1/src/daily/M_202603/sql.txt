@@ -1,0 +1,12 @@
+SELECT
+a.name
+from records r
+inner join athletes a
+on r.athlete_id = a.id
+inner join games g
+on g.id = r.game_id
+where g.year >= 2000
+and r.medal is not null
+group by athlete_id
+having count(DISTINCT team_id) >= 2
+order by a.name
