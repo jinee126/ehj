@@ -1,0 +1,444 @@
+import { useState, useCallback } from "react";
+
+// ── 타입 정의 ──────────────────────────────────────────
+// interface Page {
+//   id: number | null;       // null = 신규(미저장)
+//   pageName: string;
+//   path: string;
+//   isSave: boolean;
+//   isRead: boolean;
+//   isDelete: boolean;
+//   isNew?: boolean;         // 추가된 신규 행 여부
+//   isDirty?: boolean;       // 수정된 행 여부
+// }
+
+// ── Mock API (실제 구현 시 fetch로 교체) ─────────────────
+const mockData = [
+  { id: 1, pageName: "대시보드 페이지", path: "/dashboard", isSave: true,  isRead: true,  isDelete: true  },
+  { id: 2, pageName: "사용량 페이지",   path: "/used",      isSave: false, isRead: true,  isDelete: false },
+  { id: 3, pageName: "API KEY 페이지",  path: "/keys",      isSave: false, isRead: true,  isDelete: false },
+  { id: 4, pageName: "상품 페이지",     path: "/productions",isSave: false,isRead: true,  isDelete: false },
+  { id: 5, pageName: "서비스 페이지",   path: "/services",  isSave: false, isRead: true,  isDelete: false },
+];
+
+let nextTempId = -1; // 신규 행 임시 ID (음수)
+
+export default function PageManagement() {
+  const [searchText, setSearchText]   = useState("");
+  const [rows, setRows]               = useState(mockData.map(r => ({ ...r })));
+  const [checkedIds, setCheckedIds]   = useState(new Set());
+  const [allChecked, setAllChecked]   = useState(false);
+
+  // ── 조회 ────────────────────────────────────────────
+  const handleSearch = useCallback(async () => {
+    // 실제: const res = await fetch(`/api/pages?search=${searchText}`);
+    //       const data = await res.json();
+    //       setRows(data);
+    const filtered = mockData.filter(r =>
+      r.pageName.includes(searchText) || r.path.includes(searchText)
+    );
+    setRows(filtered.map(r => ({ ...r })));
+    setCheckedIds(new Set());
+    setAllChecked(false);
+  }, [searchText]);
+
+  // ── 추가 (빈 행 삽입) ────────────────────────────────
+  const handleAdd = useCallback(() => {
+    const newRow = {
+      id: nextTempId--,
+      pageName: "",
+      path: "",
+      isSave: false,
+      isRead: false,
+      isDelete: false,
+      isNew: true,
+      isDirty: true,
+    };
+    setRows(prev => [...prev, newRow]);
+  }, []);
+
+  // ── 셀 값 변경 ────────────────────────────────────────
+  const handleChange = useCallback((id, field, value) => {
+    setRows(prev =>
+      prev.map(r => r.id === id ? { ...r, [field]: value, isDirty: true } : r)
+    );
+  }, []);
+
+  // ── 전체 체크 ─────────────────────────────────────────
+  const handleAllCheck = useCallback((checked) => {
+    setAllChecked(checked);
+    setCheckedIds(checked ? new Set(rows.map(r => r.id)) : new Set());
+  }, [rows]);
+
+  // ── 개별 체크 ─────────────────────────────────────────
+  const handleRowCheck = useCallback((id, checked) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      checked ? next.add(id) : next.delete(id);
+      return next;
+    });
+  }, []);
+
+  // ── 저장 ─────────────────────────────────────────────
+  const handleSave = useCallback(async () => {
+    const dirtyRows = rows.filter(r => r.isDirty);
+    if (dirtyRows.length === 0) {
+      alert("변경된 내용이 없습니다.");
+      return;
+    }
+
+    const newRows     = dirtyRows.filter(r => r.isNew);
+    const updatedRows = dirtyRows.filter(r => !r.isNew);
+
+    // 실제 구현:
+    // if (newRows.length > 0)
+    //   await fetch('/api/pages', { method: 'POST', body: JSON.stringify(newRows), headers: { 'Content-Type': 'application/json' } });
+    // if (updatedRows.length > 0)
+    //   await fetch('/api/pages', { method: 'PUT',  body: JSON.stringify(updatedRows), headers: { 'Content-Type': 'application/json' } });
+
+    console.log("저장 - 신규:", newRows, "수정:", updatedRows);
+    alert(`저장 완료 (신규 ${newRows.length}건 / 수정 ${updatedRows.length}건)`);
+
+    // 저장 후 dirty 플래그 초기화
+    setRows(prev => prev.map(r => ({ ...r, isNew: false, isDirty: false })));
+  }, [rows]);
+
+  // ── 삭제 ─────────────────────────────────────────────
+  const handleDelete = useCallback(async () => {
+    if (checkedIds.size === 0) {
+      alert("삭제할 항목을 선택해 주세요.");
+      return;
+    }
+    if (!confirm(`선택한 ${checkedIds.size}건을 삭제하시겠습니까?`)) return;
+
+    const serverIds = [...checkedIds].filter(id => id > 0); // 신규 행(음수 ID)은 서버 호출 불필요
+
+    // 실제 구현:
+    // if (serverIds.length > 0)
+    //   await fetch('/api/pages', { method: 'DELETE', body: JSON.stringify(serverIds), headers: { 'Content-Type': 'application/json' } });
+
+    console.log("삭제 ID:", serverIds);
+    setRows(prev => prev.filter(r => !checkedIds.has(r.id)));
+    setCheckedIds(new Set());
+    setAllChecked(false);
+    alert("삭제 완료");
+  }, [checkedIds]);
+
+  // ── Enter 키 조회 ─────────────────────────────────────
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") handleSearch();
+  };
+
+  return (
+    <div style={styles.wrap}>
+      {/* ── 타이틀 ── */}
+      <div style={styles.titleBar}>
+        <span style={styles.titleDot} />
+        <h2 style={styles.title}>페이지 목록</h2>
+      </div>
+
+      {/* ── 상단 버튼 영역 ── */}
+      <div style={styles.toolbar}>
+        {/* 검색 영역 */}
+        <div style={styles.searchArea}>
+          <input
+            style={styles.searchInput}
+            type="text"
+            placeholder="페이지명 / 경로 검색"
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <button style={styles.btnPrimary} onClick={handleSearch}>조회</button>
+        </div>
+
+        {/* 액션 버튼 */}
+        <div style={styles.actionArea}>
+          <button style={styles.btnSecondary} onClick={handleAdd}>추가</button>
+          <button style={styles.btnSave}      onClick={handleSave}>저장</button>
+          <button style={styles.btnDelete}    onClick={handleDelete}>삭제</button>
+        </div>
+      </div>
+
+      {/* ── 테이블 ── */}
+      <div style={styles.tableWrap}>
+        <table style={styles.table}>
+          <colgroup>
+            <col style={{ width: "60px" }} />  {/* 번호 */}
+            <col style={{ width: "44px" }} />  {/* 체크 */}
+            <col />                             {/* 페이지명 */}
+            <col />                             {/* 경로 */}
+            <col style={{ width: "70px" }} />  {/* 저장 */}
+            <col style={{ width: "70px" }} />  {/* 조회 */}
+            <col style={{ width: "70px" }} />  {/* 삭제 */}
+          </colgroup>
+          <thead>
+            <tr>
+              <th style={styles.th}>번호</th>
+              <th style={styles.th}>
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={e => handleAllCheck(e.target.checked)}
+                  style={styles.checkbox}
+                />
+              </th>
+              <th style={styles.th}>페이지 명</th>
+              <th style={styles.th}>경로</th>
+              <th style={styles.th}>저장</th>
+              <th style={styles.th}>조회</th>
+              <th style={styles.th}>삭제</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={styles.empty}>조회된 데이터가 없습니다.</td>
+              </tr>
+            ) : (
+              rows.map((row, idx) => (
+                <tr
+                  key={row.id}
+                  style={{
+                    ...styles.tr,
+                    backgroundColor: row.isNew
+                      ? "#fffde7"
+                      : row.isDirty
+                      ? "#f0f4ff"
+                      : idx % 2 === 0 ? "#fff" : "#fafafa",
+                  }}
+                >
+                  {/* 번호 */}
+                  <td style={styles.tdCenter}>
+                    {row.isNew ? <span style={styles.newBadge}>NEW</span> : idx + 1}
+                  </td>
+
+                  {/* 체크박스 */}
+                  <td style={styles.tdCenter}>
+                    <input
+                      type="checkbox"
+                      checked={checkedIds.has(row.id)}
+                      onChange={e => handleRowCheck(row.id, e.target.checked)}
+                      style={styles.checkbox}
+                    />
+                  </td>
+
+                  {/* 페이지명 */}
+                  <td style={styles.td}>
+                    <input
+                      style={styles.cellInput}
+                      type="text"
+                      value={row.pageName}
+                      onChange={e => handleChange(row.id, "pageName", e.target.value)}
+                      placeholder="페이지명 입력"
+                    />
+                  </td>
+
+                  {/* 경로 */}
+                  <td style={styles.td}>
+                    <input
+                      style={styles.cellInput}
+                      type="text"
+                      value={row.path}
+                      onChange={e => handleChange(row.id, "path", e.target.value)}
+                      placeholder="/path"
+                    />
+                  </td>
+
+                  {/* 저장 권한 */}
+                  <td style={styles.tdCenter}>
+                    <input
+                      type="checkbox"
+                      checked={row.isSave}
+                      onChange={e => handleChange(row.id, "isSave", e.target.checked)}
+                      style={styles.checkbox}
+                    />
+                  </td>
+
+                  {/* 조회 권한 */}
+                  <td style={styles.tdCenter}>
+                    <input
+                      type="checkbox"
+                      checked={row.isRead}
+                      onChange={e => handleChange(row.id, "isRead", e.target.checked)}
+                      style={styles.checkbox}
+                    />
+                  </td>
+
+                  {/* 삭제 권한 */}
+                  <td style={styles.tdCenter}>
+                    <input
+                      type="checkbox"
+                      checked={row.isDelete}
+                      onChange={e => handleChange(row.id, "isDelete", e.target.checked)}
+                      style={styles.checkbox}
+                    />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── 스타일 ────────────────────────────────────────────────
+const styles = {
+  wrap: {
+    fontFamily: "'Malgun Gothic', '맑은 고딕', sans-serif",
+    fontSize: "13px",
+    padding: "20px 24px",
+    backgroundColor: "#f5f6f8",
+    minHeight: "100vh",
+    color: "#333",
+  },
+  titleBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "16px",
+  },
+  titleDot: {
+    width: "8px",
+    height: "8px",
+    backgroundColor: "#1a1a2e",
+    display: "inline-block",
+  },
+  title: {
+    margin: 0,
+    fontSize: "16px",
+    fontWeight: "bold",
+    color: "#1a1a2e",
+  },
+  toolbar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "10px",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+  searchArea: {
+    display: "flex",
+    gap: "6px",
+    alignItems: "center",
+  },
+  actionArea: {
+    display: "flex",
+    gap: "4px",
+  },
+  searchInput: {
+    width: "220px",
+    height: "30px",
+    padding: "0 8px",
+    border: "1px solid #ccc",
+    borderRadius: "2px",
+    fontSize: "13px",
+    outline: "none",
+  },
+  btnPrimary: {
+    height: "30px",
+    padding: "0 16px",
+    backgroundColor: "#4a5568",
+    color: "#fff",
+    border: "none",
+    borderRadius: "2px",
+    cursor: "pointer",
+    fontSize: "13px",
+  },
+  btnSecondary: {
+    height: "30px",
+    padding: "0 14px",
+    backgroundColor: "#718096",
+    color: "#fff",
+    border: "none",
+    borderRadius: "2px",
+    cursor: "pointer",
+    fontSize: "13px",
+  },
+  btnSave: {
+    height: "30px",
+    padding: "0 14px",
+    backgroundColor: "#2b6cb0",
+    color: "#fff",
+    border: "none",
+    borderRadius: "2px",
+    cursor: "pointer",
+    fontSize: "13px",
+  },
+  btnDelete: {
+    height: "30px",
+    padding: "0 14px",
+    backgroundColor: "#c53030",
+    color: "#fff",
+    border: "none",
+    borderRadius: "2px",
+    cursor: "pointer",
+    fontSize: "13px",
+  },
+  tableWrap: {
+    overflowX: "auto",
+    border: "1px solid #d2d6dc",
+    borderRadius: "2px",
+    backgroundColor: "#fff",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    tableLayout: "fixed",
+  },
+  th: {
+    backgroundColor: "#2d3748",
+    color: "#fff",
+    padding: "8px 6px",
+    textAlign: "center",
+    fontWeight: "normal",
+    borderRight: "1px solid #4a5568",
+    whiteSpace: "nowrap",
+  },
+  tr: {
+    borderBottom: "1px solid #e2e8f0",
+    transition: "background-color 0.15s",
+  },
+  td: {
+    padding: "4px 6px",
+    borderRight: "1px solid #e2e8f0",
+  },
+  tdCenter: {
+    padding: "4px 6px",
+    textAlign: "center",
+    borderRight: "1px solid #e2e8f0",
+    color: "#555",
+  },
+  cellInput: {
+    width: "100%",
+    height: "26px",
+    padding: "0 6px",
+    border: "1px solid #cbd5e0",
+    borderRadius: "2px",
+    fontSize: "13px",
+    backgroundColor: "transparent",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  checkbox: {
+    width: "15px",
+    height: "15px",
+    cursor: "pointer",
+  },
+  empty: {
+    textAlign: "center",
+    padding: "30px",
+    color: "#999",
+  },
+  newBadge: {
+    backgroundColor: "#ed8936",
+    color: "#fff",
+    padding: "1px 5px",
+    borderRadius: "2px",
+    fontSize: "10px",
+    fontWeight: "bold",
+  },
+};
