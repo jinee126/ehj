@@ -12,32 +12,19 @@ import { useState, useCallback } from "react";
 //   isDirty?: boolean;       // 수정된 행 여부
 // }
 
-// ── Mock API (실제 구현 시 fetch로 교체) ─────────────────
-const mockData = [
-  { id: 1, pageName: "대시보드 페이지", path: "/dashboard", isSave: true,  isRead: true,  isDelete: true  },
-  { id: 2, pageName: "사용량 페이지",   path: "/used",      isSave: false, isRead: true,  isDelete: false },
-  { id: 3, pageName: "API KEY 페이지",  path: "/keys",      isSave: false, isRead: true,  isDelete: false },
-  { id: 4, pageName: "상품 페이지",     path: "/productions",isSave: false,isRead: true,  isDelete: false },
-  { id: 5, pageName: "서비스 페이지",   path: "/services",  isSave: false, isRead: true,  isDelete: false },
-];
-
 let nextTempId = -1; // 신규 행 임시 ID (음수)
 
 export default function PageManagement() {
   const [searchText, setSearchText]   = useState("");
-  const [rows, setRows]               = useState(mockData.map(r => ({ ...r })));
+  const [rows, setRows]               = useState([]);
   const [checkedIds, setCheckedIds]   = useState(new Set());
   const [allChecked, setAllChecked]   = useState(false);
 
   // ── 조회 ────────────────────────────────────────────
   const handleSearch = useCallback(async () => {
-    // 실제: const res = await fetch(`/api/pages?search=${searchText}`);
-    //       const data = await res.json();
-    //       setRows(data);
-    const filtered = mockData.filter(r =>
-      r.pageName.includes(searchText) || r.path.includes(searchText)
-    );
-    setRows(filtered.map(r => ({ ...r })));
+    const res = await fetch(`/api/pages?search=${searchText}`);
+    const data = await res.json();
+    setRows(data);
     setCheckedIds(new Set());
     setAllChecked(false);
   }, [searchText]);
@@ -90,11 +77,10 @@ export default function PageManagement() {
     const newRows     = dirtyRows.filter(r => r.isNew);
     const updatedRows = dirtyRows.filter(r => !r.isNew);
 
-    // 실제 구현:
-    // if (newRows.length > 0)
-    //   await fetch('/api/pages', { method: 'POST', body: JSON.stringify(newRows), headers: { 'Content-Type': 'application/json' } });
-    // if (updatedRows.length > 0)
-    //   await fetch('/api/pages', { method: 'PUT',  body: JSON.stringify(updatedRows), headers: { 'Content-Type': 'application/json' } });
+    if (newRows.length > 0)
+      await fetch('/api/pages', { method: 'POST', body: JSON.stringify(newRows), headers: { 'Content-Type': 'application/json' } });
+    if (updatedRows.length > 0)
+      await fetch('/api/pages', { method: 'PUT', body: JSON.stringify(updatedRows), headers: { 'Content-Type': 'application/json' } });
 
     console.log("저장 - 신규:", newRows, "수정:", updatedRows);
     alert(`저장 완료 (신규 ${newRows.length}건 / 수정 ${updatedRows.length}건)`);
@@ -113,9 +99,8 @@ export default function PageManagement() {
 
     const serverIds = [...checkedIds].filter(id => id > 0); // 신규 행(음수 ID)은 서버 호출 불필요
 
-    // 실제 구현:
-    // if (serverIds.length > 0)
-    //   await fetch('/api/pages', { method: 'DELETE', body: JSON.stringify(serverIds), headers: { 'Content-Type': 'application/json' } });
+    if (serverIds.length > 0)
+      await fetch('/api/pages', { method: 'DELETE', body: JSON.stringify(serverIds), headers: { 'Content-Type': 'application/json' } });
 
     console.log("삭제 ID:", serverIds);
     setRows(prev => prev.filter(r => !checkedIds.has(r.id)));
@@ -442,4 +427,3 @@ const styles = {
     fontWeight: "bold",
   },
 };
-test
