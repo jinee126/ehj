@@ -1,0 +1,181 @@
+-- ============================================================
+--  메뉴 관리 DB 설계  (Oracle / 시퀀스 방식)
+-- ============================================================
+
+-- ── 1. 메뉴 그룹 ──────────────────────────────────────────────
+--  운영자, 관리자 등 사용자 역할 그룹을 관리
+CREATE TABLE MENU_GROUP (
+  ID          NUMBER        NOT NULL,        -- PK
+  GROUP_NAME  VARCHAR2(100) NOT NULL,        -- 그룹명 (ex: 운영자, 관리자)
+  USE_YN      CHAR(1)       DEFAULT 'Y',     -- 사용 여부
+  SORT_ORDER  NUMBER        DEFAULT 0,       -- 정렬 순서
+  CREATED_AT  TIMESTAMP     DEFAULT SYSDATE,
+  UPDATED_AT  TIMESTAMP     DEFAULT SYSDATE,
+  CONSTRAINT PK_MENU_GROUP PRIMARY KEY (ID)
+);
+
+CREATE SEQUENCE SEQ_MENU_GROUP START WITH 1 INCREMENT BY 1 NOCACHE;
+
+COMMENT ON TABLE  MENU_GROUP            IS '메뉴 그룹 (역할)';
+COMMENT ON COLUMN MENU_GROUP.ID         IS '메뉴 그룹 PK';
+COMMENT ON COLUMN MENU_GROUP.GROUP_NAME IS '그룹명';
+COMMENT ON COLUMN MENU_GROUP.USE_YN     IS '사용 여부 (Y/N)';
+COMMENT ON COLUMN MENU_GROUP.SORT_ORDER IS '정렬 순서';
+
+-- ── 2. 페이지 ─────────────────────────────────────────────────
+--  실제 라우팅되는 페이지 정보 (Next.js 경로 기준)
+CREATE TABLE PAGE (
+  ID          NUMBER        NOT NULL,
+  PAGE_NAME   VARCHAR2(200) NOT NULL,        -- 페이지 명칭
+  PATH        VARCHAR2(500) NOT NULL UNIQUE, -- 라우팅 경로 (ex: /admin/user)
+  IS_SAVE     CHAR(1)       DEFAULT 'N',     -- 저장 기능 여부
+  IS_READ     CHAR(1)       DEFAULT 'N',     -- 조회 기능 여부
+  IS_DELETE   CHAR(1)       DEFAULT 'N',     -- 삭제 기능 여부
+  USE_YN      CHAR(1)       DEFAULT 'Y',
+  CREATED_AT  TIMESTAMP     DEFAULT SYSDATE,
+  UPDATED_AT  TIMESTAMP     DEFAULT SYSDATE,
+  CONSTRAINT PK_PAGE PRIMARY KEY (ID)
+);
+
+CREATE SEQUENCE SEQ_PAGE START WITH 1 INCREMENT BY 1 NOCACHE;
+
+COMMENT ON TABLE  PAGE           IS '페이지 정보';
+COMMENT ON COLUMN PAGE.ID        IS '페이지 PK';
+COMMENT ON COLUMN PAGE.PAGE_NAME IS '페이지 명칭';
+COMMENT ON COLUMN PAGE.PATH      IS 'Next.js 라우팅 경로';
+COMMENT ON COLUMN PAGE.IS_SAVE   IS '저장 기능 유무 (Y/N)';
+COMMENT ON COLUMN PAGE.IS_READ   IS '조회 기능 유무 (Y/N)';
+COMMENT ON COLUMN PAGE.IS_DELETE IS '삭제 기능 유무 (Y/N)';
+
+-- ── 3. 메뉴 ──────────────────────────────────────────────────
+--  계층형 트리 구조 (PARENT_ID → 재귀 참조)
+CREATE TABLE MENU (
+  ID          NUMBER        NOT NULL,
+  PARENT_ID   NUMBER,                        -- 부모 메뉴 ID (NULL = 루트)
+  MENU_NAME   VARCHAR2(200) NOT NULL,        -- 메뉴 표시명
+  PAGE_ID     NUMBER,                        -- 연결 페이지 (없으면 NULL → 폴더형 메뉴)
+  SORT_ORDER  NUMBER        DEFAULT 0,       -- 형제 메뉴 간 정렬 순서
+  DEPTH       NUMBER        DEFAULT 0,       -- 트리 깊이 (0 = 루트)
+  USE_YN      CHAR(1)       DEFAULT 'Y',
+  CREATED_AT  TIMESTAMP     DEFAULT SYSDATE,
+  UPDATED_AT  TIMESTAMP     DEFAULT SYSDATE,
+  CONSTRAINT PK_MENU          PRIMARY KEY (ID),
+  CONSTRAINT FK_MENU_PARENT   FOREIGN KEY (PARENT_ID) REFERENCES MENU(ID),
+  CONSTRAINT FK_MENU_PAGE     FOREIGN KEY (PAGE_ID)   REFERENCES PAGE(ID)
+);
+
+CREATE SEQUENCE SEQ_MENU START WITH 1 INCREMENT BY 1 NOCACHE;
+
+-- 계층형 쿼리 성능을 위한 인덱스
+CREATE INDEX IDX_MENU_PARENT ON MENU(PARENT_ID);
+CREATE INDEX IDX_MENU_PAGE   ON MENU(PAGE_ID);
+
+COMMENT ON TABLE  MENU            IS '메뉴 (계층형 트리)';
+COMMENT ON COLUMN MENU.ID         IS '메뉴 PK';
+COMMENT ON COLUMN MENU.PARENT_ID  IS '부모 메뉴 ID (NULL이면 최상위)';
+COMMENT ON COLUMN MENU.MENU_NAME  IS '메뉴 표시명';
+COMMENT ON COLUMN MENU.PAGE_ID    IS '연결 페이지 PK';
+COMMENT ON COLUMN MENU.SORT_ORDER IS '같은 레벨 내 정렬 순서';
+COMMENT ON COLUMN MENU.DEPTH      IS '트리 깊이 (0=루트, 1=1depth...)';
+
+-- ── 4. 메뉴-그룹 권한 ─────────────────────────────────────────
+--  특정 메뉴에 대해 각 메뉴 그룹이 갖는 권한 + 연결 페이지
+--  (그룹마다 다른 페이지로 라우팅 가능)
+CREATE TABLE MENU_GROUP_PERMISSION (
+  ID            NUMBER  NOT NULL,
+  MENU_ID       NUMBER  NOT NULL,            -- FK → MENU
+  MENU_GROUP_ID NUMBER  NOT NULL,            -- FK → MENU_GROUP
+  PAGE_ID       NUMBER,                      -- 이 그룹에서 이동할 페이지 (MENU.PAGE_ID와 별개)
+  IS_SAVE       CHAR(1) DEFAULT 'N',         -- 저장 권한
+  IS_READ       CHAR(1) DEFAULT 'N',         -- 조회 권한
+  IS_DELETE     CHAR(1) DEFAULT 'N',         -- 삭제 권한
+  CREATED_AT    TIMESTAMP DEFAULT SYSDATE,
+  UPDATED_AT    TIMESTAMP DEFAULT SYSDATE,
+  CONSTRAINT PK_MENU_GROUP_PERM    PRIMARY KEY (ID),
+  CONSTRAINT FK_MGP_MENU           FOREIGN KEY (MENU_ID)       REFERENCES MENU(ID),
+  CONSTRAINT FK_MGP_MENU_GROUP     FOREIGN KEY (MENU_GROUP_ID) REFERENCES MENU_GROUP(ID),
+  CONSTRAINT FK_MGP_PAGE           FOREIGN KEY (PAGE_ID)       REFERENCES PAGE(ID),
+  CONSTRAINT UQ_MGP_MENU_GROUP     UNIQUE (MENU_ID, MENU_GROUP_ID) -- 메뉴+그룹 조합 유일
+);
+
+CREATE SEQUENCE SEQ_MENU_GROUP_PERM START WITH 1 INCREMENT BY 1 NOCACHE;
+
+CREATE INDEX IDX_MGP_MENU       ON MENU_GROUP_PERMISSION(MENU_ID);
+CREATE INDEX IDX_MGP_MENU_GROUP ON MENU_GROUP_PERMISSION(MENU_GROUP_ID);
+
+COMMENT ON TABLE  MENU_GROUP_PERMISSION              IS '메뉴-그룹 권한 설정';
+COMMENT ON COLUMN MENU_GROUP_PERMISSION.ID           IS 'PK';
+COMMENT ON COLUMN MENU_GROUP_PERMISSION.MENU_ID      IS '메뉴 FK';
+COMMENT ON COLUMN MENU_GROUP_PERMISSION.MENU_GROUP_ID IS '메뉴 그룹 FK';
+COMMENT ON COLUMN MENU_GROUP_PERMISSION.PAGE_ID      IS '그룹별 라우팅 페이지 FK (NULL 가능)';
+COMMENT ON COLUMN MENU_GROUP_PERMISSION.IS_SAVE      IS '저장 권한 (Y/N)';
+COMMENT ON COLUMN MENU_GROUP_PERMISSION.IS_READ      IS '조회 권한 (Y/N)';
+COMMENT ON COLUMN MENU_GROUP_PERMISSION.IS_DELETE    IS '삭제 권한 (Y/N)';
+
+-- ============================================================
+--  샘플 데이터
+-- ============================================================
+INSERT INTO MENU_GROUP (ID, GROUP_NAME, SORT_ORDER) VALUES (SEQ_MENU_GROUP.NEXTVAL, '운영자', 1);
+INSERT INTO MENU_GROUP (ID, GROUP_NAME, SORT_ORDER) VALUES (SEQ_MENU_GROUP.NEXTVAL, '관리자', 2);
+
+INSERT INTO PAGE (ID, PAGE_NAME, PATH, IS_SAVE, IS_READ, IS_DELETE)
+  VALUES (SEQ_PAGE.NEXTVAL, '메뉴 관리',  '/admin/menu',  'Y', 'Y', 'Y');
+INSERT INTO PAGE (ID, PAGE_NAME, PATH, IS_SAVE, IS_READ, IS_DELETE)
+  VALUES (SEQ_PAGE.NEXTVAL, '페이지 관리', '/admin/page', 'Y', 'Y', 'Y');
+INSERT INTO PAGE (ID, PAGE_NAME, PATH, IS_SAVE, IS_READ, IS_DELETE)
+  VALUES (SEQ_PAGE.NEXTVAL, '대시보드',   '/dashboard',   'N', 'Y', 'N');
+
+-- 루트 메뉴
+INSERT INTO MENU (ID, PARENT_ID, MENU_NAME, PAGE_ID, SORT_ORDER, DEPTH)
+  VALUES (SEQ_MENU.NEXTVAL, NULL, 'Main', NULL, 1, 0);
+
+-- 1depth 메뉴
+INSERT INTO MENU (ID, PARENT_ID, MENU_NAME, PAGE_ID, SORT_ORDER, DEPTH)
+  VALUES (SEQ_MENU.NEXTVAL, 1, '시스템 관리', NULL, 1, 1);
+
+-- 2depth 메뉴
+INSERT INTO MENU (ID, PARENT_ID, MENU_NAME, PAGE_ID, SORT_ORDER, DEPTH)
+  VALUES (SEQ_MENU.NEXTVAL, 2, '메뉴 관리', 1, 1, 2);
+INSERT INTO MENU (ID, PARENT_ID, MENU_NAME, PAGE_ID, SORT_ORDER, DEPTH)
+  VALUES (SEQ_MENU.NEXTVAL, 2, '페이지 관리', 2, 2, 2);
+
+COMMIT;
+
+-- ============================================================
+--  계층형 메뉴 조회 쿼리 (Oracle CONNECT BY)
+-- ============================================================
+SELECT
+  M.ID,
+  M.PARENT_ID,
+  LPAD(' ', M.DEPTH * 2) || M.MENU_NAME AS MENU_NAME,
+  M.PAGE_ID,
+  P.PAGE_NAME,
+  P.PATH,
+  M.SORT_ORDER,
+  M.DEPTH,
+  M.USE_YN
+FROM MENU M
+LEFT JOIN PAGE P ON P.ID = M.PAGE_ID
+START WITH M.PARENT_ID IS NULL
+CONNECT BY PRIOR M.ID = M.PARENT_ID
+ORDER SIBLINGS BY M.SORT_ORDER;
+
+-- ============================================================
+--  특정 메뉴의 그룹별 권한 조회
+-- ============================================================
+SELECT
+  MG.ID            AS MENU_GROUP_ID,
+  MG.GROUP_NAME,
+  MGP.PAGE_ID,
+  P.PAGE_NAME,
+  P.PATH,
+  NVL(MGP.IS_SAVE,   'N') AS IS_SAVE,
+  NVL(MGP.IS_READ,   'N') AS IS_READ,
+  NVL(MGP.IS_DELETE, 'N') AS IS_DELETE
+FROM MENU_GROUP MG
+LEFT JOIN MENU_GROUP_PERMISSION MGP
+  ON MGP.MENU_GROUP_ID = MG.ID
+  AND MGP.MENU_ID = :menuId         -- 파라미터: 선택된 메뉴 ID
+LEFT JOIN PAGE P ON P.ID = MGP.PAGE_ID
+WHERE MG.USE_YN = 'Y'
+ORDER BY MG.SORT_ORDER;
