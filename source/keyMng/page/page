@@ -10,6 +10,8 @@ const ResultCode    = { ET00: 'ET00' };
 const ServerResCode = { OK: '200' };
 
 // ── 타입 정의 ──────────────────────────────────────────────────────
+type RowStatus = 'create' | 'update' | 'delete';
+
 interface PageInfo {
   id:       number | null;
   pageName: string;
@@ -17,8 +19,7 @@ interface PageInfo {
   isSave:   boolean;
   isRead:   boolean;
   isDelete: boolean;
-  isNew?:   boolean;   // 추가 버튼으로 생성된 신규 행
-  isDirty?: boolean;   // 수정된 행
+  status?:  RowStatus;  // create | update | delete
 }
 
 interface CheckItem {
@@ -75,7 +76,10 @@ export default function PageManager() {
 
   // ── 저장 ────────────────────────────────────────────────────────
   const regUpdateData = useCallback(async () => {
-    const changedRows = pageListData.filter((item) => item.isDirty || item.isNew);
+    // status가 create 또는 update인 행만 추출
+    const changedRows = pageListData.filter(
+      (item) => item.status === 'create' || item.status === 'update',
+    );
 
     if (changedRows.length === 0) {
       alert('변경된 내용이 없습니다.');
@@ -111,8 +115,8 @@ export default function PageManager() {
       checkedIds.has(`check_${index}`),
     );
 
-    // 신규 행(isNew)만 있으면 서버 호출 없이 제거
-    const onlyNew = targetRows.every((item) => item.isNew);
+    // 신규 행(status === 'create')만 있으면 서버 호출 없이 제거
+    const onlyNew = targetRows.every((item) => item.status === 'create');
     if (onlyNew) {
       setPageListData((prev) =>
         prev.filter((_, index) => !checkedIds.has(`check_${index}`)),
@@ -122,11 +126,12 @@ export default function PageManager() {
       return;
     }
 
+    // 기존 행이 포함된 경우 status: 'delete'로 서버에 전송
     const resultData = await callGetAPI(
       `${BASE_URL}/pages`,
       HTTP_METHOD.POST,
       {},
-      { data: targetRows },
+      { data: targetRows.map((r) => ({ ...r, status: 'delete' })) },
     );
 
     if (resultData.resultCode === ResultCode.ET00 && resultData.resCode === ServerResCode.OK) {
@@ -144,7 +149,7 @@ export default function PageManager() {
       isSave:   false,
       isRead:   false,
       isDelete: false,
-      isNew:    true,
+      status:   'create',
     };
     setPageListData((prev) => [...prev, newRow]);
   }, []);
@@ -157,7 +162,14 @@ export default function PageManager() {
   ) => {
     setPageListData((prev) =>
       prev.map((r) =>
-        r.id === id ? { ...r, [field]: value, isDirty: true } : r,
+        r.id === id
+          ? {
+              ...r,
+              [field]: value,
+              // 신규 행은 create 유지, 기존 행은 update로 변경
+              status: r.status === 'create' ? 'create' : 'update',
+            }
+          : r,
       ),
     );
   }, []);
@@ -271,7 +283,7 @@ export default function PageManager() {
                   >
                     {/* 번호 */}
                     <td className="p-4 text-sm">
-                      {item.isNew
+                      {item.status === 'create'
                         ? <span className="text-xs text-orange-500 font-bold">NEW</span>
                         : index + 1}
                     </td>
