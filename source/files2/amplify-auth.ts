@@ -1,4 +1,4 @@
-import { fetchAuthSession, signIn } from 'aws-amplify/auth'
+import { fetchAuthSession, signIn, signOut } from 'aws-amplify/auth'
 
 export type AmplifyTokens = {
   accessToken: string
@@ -25,4 +25,10 @@ export async function signInWithAmplify(userId: string, password: string): Promi
   }
 
   return { accessToken, idToken }
+}
+
+// global: true로 주면 발급된 모든 디바이스의 세션을 한 번에 무효화함.
+// 기본(false)은 현재 브라우저의 로컬 세션만 종료.
+export async function signOutWithAmplify(global = false) {
+  await signOut({ global })
 }
