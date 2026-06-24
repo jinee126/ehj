@@ -7,18 +7,10 @@ import type { ApiResponse } from '@/types/...' // 실제 경로 확인 필요
 
 export const api = axios.create({
     baseURL: import.meta.env.VITE_BASE_URL,
-    withCredentials: true,
 })
 
 // Request interceptor
 api.interceptors.request.use((config) => {
-    // ⚠️ 이 분기는 "옛 백엔드 로그인 흐름" 기준이었음.
-    // Cognito 로그인은 이제 Amplify가 이 api 인스턴스를 거치지 않고 직접 처리하므로,
-    // 이 URL 자체는 더 이상 의미 없을 가능성이 높음.
-    // 다만 회원가입/비밀번호 재설정처럼 인증 없이 호출해야 하는 다른 엔드포인트가 있다면
-    // 그 목록으로 바꿔서 유지해야 함 — 확인 필요.
-    if (config.url === 'api/v1/auth/login') return config
-
     const token = $accessToken.get()
     if (token) config.headers.Authorization = `Bearer ${token}`
     return config
@@ -45,12 +37,7 @@ api.interceptors.response.use(
     // 서버 에러 응답 캐치 미들웨어
     async ({ response, config }: AxiosError<ApiResponse<null>>) => {
         if (response && config) {
-            const errorCode = response.data.error?.errorCode
-
-            // 비밀번호 불일치(USER-302) 제외한 401은 토큰 갱신 후 재요청
-            // ⚠️ USER-302가 여전히 발생 가능한 에러코드인지 확인 필요
-            // (Cognito가 비밀번호 검증을 하게 되면서 이 코드가 안 쓰일 수도 있음)
-            if (response.status === 401 && errorCode !== 'USER-302') {
+            if (response.status === 401) {
                 try {
                     if (!tokenRefreshing) tokenRefreshing = refreshAccessToken()
 
