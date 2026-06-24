@@ -1,0 +1,14 @@
+function handleLogout() {
+  signOut(false, {
+    onSuccess: () => {
+      $accessToken.set(null)
+      navigate('/login')
+    },
+    onError: () => {
+      $alertModal.set({
+        isOpen: true,
+        message: '로그아웃에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      })
+    },
+  })
+}
