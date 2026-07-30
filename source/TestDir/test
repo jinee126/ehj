@@ -1,0 +1,57 @@
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.test.StepVerifier;
+
+import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class GlobalExceptionHandlerTest {
+
+    private final GlobalExceptionHandler exceptionHandler = new GlobalExceptionHandler();
+
+    @Test
+    void handleClosedChannelException() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/orders/123").build());
+
+        Throwable ex = new ClosedChannelException(); // Stackless 버전 대신 대체
+
+        StepVerifier.create(exceptionHandler.handle(exchange, ex))
+                .verifyComplete();
+
+        assertThat(exchange.getResponse().getStatusCode())
+                .isEqualTo(org.springframework.http.HttpStatus.BAD_GATEWAY);
+    }
+
+    @Test
+    void handleConnectionClosedBeforeSend() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/orders/123").build());
+
+        Throwable ex = new IOException("Connection has been closed BEFORE send operation");
+
+        StepVerifier.create(exceptionHandler.handle(exchange, ex))
+                .verifyComplete();
+
+        assertThat(exchange.getResponse().getStatusCode())
+                .isEqualTo(org.springframework.http.HttpStatus.BAD_GATEWAY);
+    }
+
+    @Test
+    void handleConnectionResetByPeer() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/orders/123").build());
+
+        Throwable ex = new IOException("sendAddress failed with error: Connection reset by peer");
+
+        StepVerifier.create(exceptionHandler.handle(exchange, ex))
+                .verifyComplete();
+
+        assertThat(exchange.getResponse().getStatusCode())
+                .isEqualTo(org.springframework.http.HttpStatus.BAD_GATEWAY);
+    }
+}
