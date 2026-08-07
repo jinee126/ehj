@@ -1,0 +1,39 @@
+@SpringBootTest
+@AutoConfigureWebTestClient
+class BTest {
+
+    @Autowired
+    WebTestClient client;
+
+    @TestConfiguration
+    static class TestConfig {
+
+        @Bean
+        WebFilter exceptionTestFilter() {
+            return (exchange, chain) -> {
+
+                if ("true".equals(
+                        exchange.getRequest()
+                                .getHeaders()
+                                .getFirst("X-Exception-Test"))) {
+
+                    return Mono.error(
+                            new ClosedChannelException()
+                    );
+                }
+
+                return chain.filter(exchange);
+            };
+        }
+    }
+
+    @Test
+    void exceptionTest() {
+        client.get()
+                .uri("/v1/geocode")
+                .header("X-Exception-Test", "true")
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
+    }
+}
