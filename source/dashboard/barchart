@@ -1,0 +1,64 @@
+import {
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+
+export type BarConfig = {
+  dataKey: string;
+  fill: string;
+  stackId?: string; // 같은 stackId를 주면 누적 막대그래프가 됨
+  name?: string; // 범례 표시 이름 (없으면 dataKey 사용)
+};
+
+type MyBarChartProps = {
+  data: { name: string; [key: string]: string | number }[];
+  bars: BarConfig[];
+  height?: number;
+  margin?: { top?: number; right?: number; left?: number; bottom?: number };
+  showGrid?: boolean;
+  showLegend?: boolean;
+  showTooltip?: boolean;
+  yAxisDomain?: [number | string, number | string];
+};
+
+const MyBarChart = ({
+  data,
+  bars,
+  height = 300,
+  margin = { top: 20, right: 30, left: 20, bottom: 5 },
+  showGrid = true,
+  showLegend = true,
+  showTooltip = true,
+  yAxisDomain = [0, 'auto'],
+}: MyBarChartProps) => {
+  return (
+    <div style={{ width: '100%', height }}>
+      <ResponsiveContainer>
+        <BarChart data={data} margin={margin}>
+          {showGrid && <CartesianGrid strokeDasharray="3 3" />}
+          <XAxis dataKey="name" />
+          <YAxis domain={yAxisDomain} />
+          {showTooltip && <Tooltip />}
+          {showLegend && <Legend />}
+          {bars.map((bar) => (
+            <Bar
+              key={bar.dataKey}
+              dataKey={bar.dataKey}
+              fill={bar.fill}
+              stackId={bar.stackId}
+              {...(bar.name ? { name: bar.name } : {})}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+export default MyBarChart;
