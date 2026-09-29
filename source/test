@@ -14,3 +14,4 @@ res.aggregations().get("by_date").sterms().buckets().array()
 
        result.put(date, byService);
    });
+
