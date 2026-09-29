@@ -1,18 +1,17 @@
-data.map(res -> {
-    Map<String, Map<String, Long>> map = new LinkedHashMap<>();
+Mono<List<DailyServiceUsage>> result = data.map(res ->
+        res.aggregations().get("by_date").sterms().buckets().array().stream()
+           .map(d -> {
+               // 모든 서비스 0으로 초기화
+               Map<String, Long> services = new LinkedHashMap<>();
+               SERVICES.forEach(s -> services.put(s, 0L));
 
-    res.aggregations().get("by_date").sterms().buckets().array()
-       .forEach(d -> {
-           Map<String, Long> byService = new LinkedHashMap<>();
+               d.aggregations().get("by_service").sterms().buckets().array()
+                .forEach(svc -> services.put(
+                        svc.key().stringValue(),
+                        (long) svc.aggregations().get("total").sum().value()
+                ));
 
-           d.aggregations().get("by_service").sterms().buckets().array()
-            .forEach(svc -> byService.put(
-                    svc.key().stringValue(),
-                    (long) svc.aggregations().get("total").sum().value()
-            ));
-
-           map.put(d.key().stringValue(), byService);
-       });
-
-    return map;
-});
+               return new DailyServiceUsage(d.key().stringValue(), services);
+           })
+           .toList()
+);
