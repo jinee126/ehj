@@ -1,30 +1,16 @@
-const getDefaultOption = (): ApexOptions => {
-  switch (type) {
-    case "pie":
-      return getPieOption();
-    case "bar":
-      return getBarOptions();
-    default:
-      return getManyBarOptions();
-  }
-};
+Map<String, Map<String, Long>> result = new LinkedHashMap<>();
 
-const finalOption = merge({}, getDefaultOption(), optionOverrides);
+res.aggregations().get("by_date").sterms().buckets().array()
+   .forEach(d -> {
+       String date = d.key().stringValue();              // "20250704"
+       Map<String, Long> byService = new LinkedHashMap<>();
 
+       d.aggregations().get("by_service").sterms().buckets().array()
+        .forEach(svc -> {
+            String service = svc.key().stringValue();    // "MAP", "PLACE" ...
+            long total = (long) svc.aggregations().get("total").sum().value();
+            byService.put(service, total);
+        });
 
-const option: ApexOptions = {
-  colors: ["#111111", "#333333", "#555555"],
-  chart: {
-    animations: { enabled: false },
-  },
-};
-
-return (
-  <CustomChart
-    type="pie"
-    data={data}
-    height={300}
-    optionOverrides={option}
-  />
-);
-
+       result.put(date, byService);
+   });
