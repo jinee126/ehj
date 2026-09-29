@@ -1,17 +1,20 @@
-Mono<List<DailyServiceUsage>> result = data.map(res ->
+return data.map(res ->
         res.aggregations().get("by_date").sterms().buckets().array().stream()
            .map(d -> {
-               // 모든 서비스 0으로 초기화
-               Map<String, Long> services = new LinkedHashMap<>();
-               SERVICES.forEach(s -> services.put(s, 0L));
+               Map<String, Long> list = d.aggregations().get("by_service").sterms().buckets().array().stream()
+                       .collect(Collectors.toMap(
+                               b -> b.key().stringValue(),
+                               b -> (long) b.aggregations().get("total").sum().value()
+                       ));
 
-               d.aggregations().get("by_service").sterms().buckets().array()
-                .forEach(svc -> services.put(
-                        svc.key().stringValue(),
-                        (long) svc.aggregations().get("total").sum().value()
-                ));
-
-               return new DailyServiceUsage(d.key().stringValue(), services);
+               return UsageResponse.UsageResponseData.builder()
+                       .date(d.key().stringValue())
+                       .mapUsage(list.getOrDefault("MAP", 0L))
+                       .placeUsage(list.getOrDefault("PLACE", 0L))
+                       .geoUsage(list.getOrDefault("GEOCODING", 0L))
+                       .directionUsage(list.getOrDefault("DIRECTION", 0L))
+                       .trafficUsage(list.getOrDefault("TRAFFIC", 0L))
+                       .build();
            })
            .toList()
 );
