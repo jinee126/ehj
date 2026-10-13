@@ -53,3 +53,9 @@ export default function TiptapEditor({ value, onChange }: Props) {
     </div>
   )
 }
+
+ <button
+        type="button"
+        className={editor.isActive('bold') ? 'is-active' : ''}
+        onClick={() => editor.chain().focus().toggleBold().run()}
+      >
