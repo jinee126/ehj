@@ -1,17 +1,14 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Image from '@tiptap/extension-image'
-import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
+import { editorExtensions, MAX_CHARS } from '@/lib/editorExtensions'
 
 type Props = {
   value: string
   onChange: (html: string) => void
 }
 
-// 실제 업로드 API에 맞게 수정 (S3 presigned URL 방식이어도 결국 URL만 리턴하면 됨)
 async function uploadImage(file: File): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
@@ -21,36 +18,70 @@ async function uploadImage(file: File): Promise<string> {
   return url
 }
 
+function Btn({
+  onClick, active = false, disabled = false, title, children,
+}: {
+  onClick: () => void
+  active?: boolean
+  disabled?: boolean
+  title?: string
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      className={active ? 'is-active' : ''}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+
+const Divider = () => <span className="divider" />
+
 export default function TiptapEditor({ value, onChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Image.configure({ allowBase64: false }),
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableHeader,
-      TableCell,
-    ],
+    extensions: editorExtensions,
     content: value,
     immediatelyRender: false,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
   })
 
-  // 툴바 활성 상태 구독 (v3는 기본적으로 트랜잭션마다 리렌더 안 해서 이게 필요)
-  const state = useEditorState({
+  const s = useEditorState({
     editor,
-    selector: ({ editor }) =>
-      editor
+    selector: ({ editor: e }) =>
+      e
         ? {
-            isBold: editor.isActive('bold'),
-            isItalic: editor.isActive('italic'),
-            isH2: editor.isActive('heading', { level: 2 }),
-            isBullet: editor.isActive('bulletList'),
-            inTable: editor.isActive('table'),
-            canMerge: editor.can().mergeCells(),
-            canSplit: editor.can().splitCell(),
+            bold: e.isActive('bold'),
+            italic: e.isActive('italic'),
+            underline: e.isActive('underline'),
+            strike: e.isActive('strike'),
+            code: e.isActive('code'),
+            link: e.isActive('link'),
+            h1: e.isActive('heading', { level: 1 }),
+            h2: e.isActive('heading', { level: 2 }),
+            h3: e.isActive('heading', { level: 3 }),
+            bullet: e.isActive('bulletList'),
+            ordered: e.isActive('orderedList'),
+            task: e.isActive('taskList'),
+            quote: e.isActive('blockquote'),
+            codeBlock: e.isActive('codeBlock'),
+            highlight: e.isActive('highlight'),
+            alignLeft: e.isActive({ textAlign: 'left' }),
+            alignCenter: e.isActive({ textAlign: 'center' }),
+            alignRight: e.isActive({ textAlign: 'right' }),
+            color: (e.getAttributes('textStyle').color as string) ?? '#000000',
+            inTable: e.isActive('table'),
+            canMerge: e.can().mergeCells(),
+            canSplit: e.can().splitCell(),
+            canUndo: e.can().undo(),
+            canRedo: e.can().redo(),
+            chars: e.storage.characterCount.characters() as number,
           }
         : null,
   })
@@ -60,75 +91,104 @@ export default function TiptapEditor({ value, onChange }: Props) {
     editor.commands.setContent(value, { emitUpdate: false })
   }, [value, editor])
 
-  if (!editor || !state) return null
+  if (!editor || !s) return null
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const run = () => editor.chain().focus()
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    e.target.value = '' // 같은 파일 다시 선택 가능하게
+    e.target.value = ''
     if (!file) return
     try {
       const url = await uploadImage(file)
-      editor.chain().focus().setImage({ src: url, alt: file.name }).run()
+      run().setImage({ src: url, alt: file.name }).run()
     } catch {
       alert('이미지 업로드에 실패했어요.')
     }
   }
 
-  const insertImageByUrl = () => {
-    const url = window.prompt('이미지 URL')
-    if (url) editor.chain().focus().setImage({ src: url }).run()
+  const setLink = () => {
+    const prev = editor.getAttributes('link').href as string | undefined
+    const url = window.prompt('링크 URL', prev ?? '')
+    if (url === null) return
+    if (url === '') {
+      run().extendMarkRange('link').unsetLink().run()
+      return
+    }
+    run().extendMarkRange('link').setLink({ href: url }).run()
   }
-
-  const cls = (active: boolean) => (active ? 'is-active' : '')
 
   return (
     <div className="editor-wrap">
       <div className="editor-toolbar">
-        <button type="button" className={cls(state.isBold)}
-          onClick={() => editor.chain().focus().toggleBold().run()}>B</button>
-        <button type="button" className={cls(state.isItalic)}
-          onClick={() => editor.chain().focus().toggleItalic().run()}>I</button>
-        <button type="button" className={cls(state.isH2)}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</button>
-        <button type="button" className={cls(state.isBullet)}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}>• 목록</button>
+        <Btn title="실행 취소" disabled={!s.canUndo} onClick={() => run().undo().run()}>↶</Btn>
+        <Btn title="다시 실행" disabled={!s.canRedo} onClick={() => run().redo().run()}>↷</Btn>
+        <Divider />
 
-        <span className="divider" />
+        <Btn active={s.h1} onClick={() => run().toggleHeading({ level: 1 }).run()}>H1</Btn>
+        <Btn active={s.h2} onClick={() => run().toggleHeading({ level: 2 }).run()}>H2</Btn>
+        <Btn active={s.h3} onClick={() => run().toggleHeading({ level: 3 }).run()}>H3</Btn>
+        <Divider />
 
-        <button type="button" onClick={() => fileInputRef.current?.click()}>🖼 업로드</button>
-        <button type="button" onClick={insertImageByUrl}>🔗 이미지 URL</button>
-        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleFileChange} />
+        <Btn active={s.bold} onClick={() => run().toggleBold().run()}><b>B</b></Btn>
+        <Btn active={s.italic} onClick={() => run().toggleItalic().run()}><i>I</i></Btn>
+        <Btn active={s.underline} onClick={() => run().toggleUnderline().run()}><u>U</u></Btn>
+        <Btn active={s.strike} onClick={() => run().toggleStrike().run()}><s>S</s></Btn>
+        <Btn active={s.code} onClick={() => run().toggleCode().run()}>{'</>'}</Btn>
+        <Btn active={s.link} onClick={setLink}>🔗</Btn>
+        <Divider />
 
-        <span className="divider" />
+        <input
+          type="color"
+          title="글자색"
+          value={s.color}
+          onChange={(e) => run().setColor(e.target.value).run()}
+        />
+        <Btn active={s.highlight} title="형광펜"
+          onClick={() => run().toggleHighlight({ color: '#fef08a' }).run()}>🖍</Btn>
+        <Divider />
 
-        <button type="button"
-          onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
-          ▦ 표 삽입
-        </button>
+        <Btn active={s.alignLeft} onClick={() => run().setTextAlign('left').run()}>⬅</Btn>
+        <Btn active={s.alignCenter} onClick={() => run().setTextAlign('center').run()}>↔</Btn>
+        <Btn active={s.alignRight} onClick={() => run().setTextAlign('right').run()}>➡</Btn>
+        <Divider />
+
+        <Btn active={s.bullet} onClick={() => run().toggleBulletList().run()}>• 목록</Btn>
+        <Btn active={s.ordered} onClick={() => run().toggleOrderedList().run()}>1. 목록</Btn>
+        <Btn active={s.task} onClick={() => run().toggleTaskList().run()}>☑ 체크</Btn>
+        <Btn active={s.quote} onClick={() => run().toggleBlockquote().run()}>❝</Btn>
+        <Btn active={s.codeBlock} onClick={() => run().toggleCodeBlock().run()}>코드블록</Btn>
+        <Btn onClick={() => run().setHorizontalRule().run()}>―</Btn>
+        <Divider />
+
+        <Btn onClick={() => fileInputRef.current?.click()}>🖼 이미지</Btn>
+        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleFile} />
+        <Btn onClick={() => run().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>▦ 표</Btn>
       </div>
 
-      {/* 커서가 표 안에 있을 때만 표 편집 툴바 노출 */}
-      {state.inTable && (
+      {s.inTable && (
         <div className="editor-toolbar sub">
-          <button type="button" onClick={() => editor.chain().focus().addRowBefore().run()}>위 행+</button>
-          <button type="button" onClick={() => editor.chain().focus().addRowAfter().run()}>아래 행+</button>
-          <button type="button" onClick={() => editor.chain().focus().deleteRow().run()}>행 삭제</button>
-          <span className="divider" />
-          <button type="button" onClick={() => editor.chain().focus().addColumnBefore().run()}>왼쪽 열+</button>
-          <button type="button" onClick={() => editor.chain().focus().addColumnAfter().run()}>오른쪽 열+</button>
-          <button type="button" onClick={() => editor.chain().focus().deleteColumn().run()}>열 삭제</button>
-          <span className="divider" />
-          <button type="button" disabled={!state.canMerge}
-            onClick={() => editor.chain().focus().mergeCells().run()}>셀 병합</button>
-          <button type="button" disabled={!state.canSplit}
-            onClick={() => editor.chain().focus().splitCell().run()}>셀 분할</button>
-          <button type="button" onClick={() => editor.chain().focus().toggleHeaderRow().run()}>헤더 행</button>
-          <span className="divider" />
-          <button type="button" onClick={() => editor.chain().focus().deleteTable().run()}>표 삭제</button>
+          <Btn onClick={() => run().addRowBefore().run()}>위 행+</Btn>
+          <Btn onClick={() => run().addRowAfter().run()}>아래 행+</Btn>
+          <Btn onClick={() => run().deleteRow().run()}>행 삭제</Btn>
+          <Divider />
+          <Btn onClick={() => run().addColumnBefore().run()}>왼쪽 열+</Btn>
+          <Btn onClick={() => run().addColumnAfter().run()}>오른쪽 열+</Btn>
+          <Btn onClick={() => run().deleteColumn().run()}>열 삭제</Btn>
+          <Divider />
+          <Btn disabled={!s.canMerge} onClick={() => run().mergeCells().run()}>셀 병합</Btn>
+          <Btn disabled={!s.canSplit} onClick={() => run().splitCell().run()}>셀 분할</Btn>
+          <Btn onClick={() => run().toggleHeaderRow().run()}>헤더 행</Btn>
+          <Divider />
+          <Btn onClick={() => run().deleteTable().run()}>표 삭제</Btn>
         </div>
       )}
 
       <EditorContent editor={editor} />
+
+      <div className="editor-footer">
+        {s.chars.toLocaleString()} / {MAX_CHARS.toLocaleString()}자
+      </div>
     </div>
   )
 }
