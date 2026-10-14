@@ -1,0 +1,18 @@
+@Query("""
+    SELECT a
+    FROM Article a
+    ORDER BY
+        CASE
+            WHEN a.type = 'fix' THEN 0
+            ELSE 1
+        END ASC,
+        CASE
+            WHEN :today BETWEEN a.startDate AND a.endDate THEN 0
+            ELSE 1
+        END ASC,
+        a.createdAt DESC
+    """)
+Page<Article> findAllOrderByPriority(
+        @Param("today") LocalDate today,
+        Pageable pageable
+);
